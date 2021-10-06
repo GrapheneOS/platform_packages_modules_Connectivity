@@ -471,6 +471,11 @@ public class PermissionMonitor {
         userAllContext.registerReceiver(
                 mIntentReceiver, intentFilter, null /* broadcastPermission */, handler);
 
+        mPackageManager.addOnPermissionsChangeListener(uid -> {
+            // traffic permissions are INTERNET and UPDATE_DEVICE_STATS
+            handler.post(() -> sendPackagePermissionsForUid(uid, getTrafficPermissionForUid(uid)));
+        });
+
         // Listen to EXTERNAL_APPLICATIONS_AVAILABLE is that an app becoming available means it may
         // need to gain a permission. But an app that becomes unavailable can neither gain nor lose
         // permissions on that account, it just can no longer run. Thus, doesn't need to listen to
@@ -645,7 +650,7 @@ public class PermissionMonitor {
         mUsersTrafficPermissions.put(user, addedUserAppIds);
         // Generate appIds from all users and send result to netd.
         final SparseIntArray appIds = makeAppIdsTrafficPermForAllUsers();
-        sendAppIdsTrafficPermission(appIds);
+        sendUidsTrafficPermission(user.getIdentifier(), appIds);
 
         // Log user added
         mPermissionUpdateLogs.log("New user(" + user.getIdentifier() + ") added: nPerm uids="
@@ -699,7 +704,7 @@ public class PermissionMonitor {
                 appIds.put(appId, TRAFFIC_PERMISSION_UNINSTALLED);
             }
         }
-        sendAppIdsTrafficPermission(appIds);
+        sendUidsTrafficPermission(user.getIdentifier(), appIds);
 
         // Log user removed
         mPermissionUpdateLogs.log("User(" + user.getIdentifier() + ") removed: nPerm uids="
@@ -823,16 +828,25 @@ public class PermissionMonitor {
         }
     }
 
-    private synchronized int getAppIdTrafficPermission(int appId) {
+    private synchronized int getUidTrafficPermission(final int uid) {
+        final int userId = UserHandle.getUserId(uid);
+
         int permission = PERMISSION_NONE;
         boolean installed = false;
+
         for (UserHandle user : mUsersTrafficPermissions.keySet()) {
+            if (user.getIdentifier() != userId) {
+                continue;
+            }
+
             final SparseIntArray userApps = mUsersTrafficPermissions.get(user);
+            final int appId = UserHandle.getAppId(uid);
             final int appIdx = userApps.indexOfKey(appId);
             if (appIdx >= 0) {
                 permission |= userApps.valueAt(appIdx);
                 installed = true;
             }
+            break;
         }
         return installed ? permission : TRAFFIC_PERMISSION_UNINSTALLED;
     }
@@ -851,8 +865,8 @@ public class PermissionMonitor {
         updateAppIdTrafficPermission(uid);
         // Get the appId permission from all users then send the latest permission to netd.
         final int appId = UserHandle.getAppId(uid);
-        final int appIdTrafficPerm = getAppIdTrafficPermission(appId);
-        sendPackagePermissionsForAppId(appId, appIdTrafficPerm);
+        final int uidTrafficPerm = getUidTrafficPermission(uid);
+        sendPackagePermissionsForUid(uid, uidTrafficPerm);
 
         final int currentPermission = mUidToNetworkPerm.get(uid, PERMISSION_NONE);
         final int permission = highestPermissionForUid(uid, currentPermission, packageName);
@@ -883,7 +897,7 @@ public class PermissionMonitor {
         mPermissionUpdateLogs.log("Package add: uid=" + uid
                 + ", nPerm=(" + permissionToString(permission) + "/"
                 + permissionToString(currentPermission) + ")"
-                + ", tPerm=" + permissionToString(appIdTrafficPerm));
+                + ", tPerm=" + permissionToString(uidTrafficPerm));
     }
 
     private int highestUidNetworkPermission(int uid) {
@@ -921,8 +935,8 @@ public class PermissionMonitor {
         }
         // Get the appId permission from all users then send the latest permission to netd.
         final int appId = UserHandle.getAppId(uid);
-        final int appIdTrafficPerm = getAppIdTrafficPermission(appId);
-        sendPackagePermissionsForAppId(appId, appIdTrafficPerm);
+        final int uidTrafficPerm = getUidTrafficPermission(uid);
+        sendPackagePermissionsForUid(uid, uidTrafficPerm);
 
         // If the newly-removed package falls within some VPN's uid range, update Netd with it.
         // This needs to happen before the mUidToNetworkPerm update below, since
@@ -942,7 +956,7 @@ public class PermissionMonitor {
         mPermissionUpdateLogs.log("Package remove: uid=" + uid
                 + ", nPerm=(" + permissionToString(permission) + "/"
                 + permissionToString(currentPermission) + ")"
-                + ", tPerm=" + permissionToString(appIdTrafficPerm));
+                + ", tPerm=" + permissionToString(uidTrafficPerm));
 
         if (permission != currentPermission) {
             final SparseIntArray apps = new SparseIntArray();
@@ -1191,14 +1205,17 @@ public class PermissionMonitor {
      * @hide
      */
     @VisibleForTesting
-    void sendPackagePermissionsForAppId(int appId, int permissions) {
+    void sendPackagePermissionsForUid(int uid, int permissions) {
+        int userId = UserHandle.getUserId(uid);
+        int appId = UserHandle.getAppId(uid);
+
         SparseIntArray netdPermissionsAppIds = new SparseIntArray();
         netdPermissionsAppIds.put(appId, permissions);
         if (hasSdkSandbox(appId)) {
             int sdkSandboxAppId = sProcessShim.toSdkSandboxUid(appId);
             netdPermissionsAppIds.put(sdkSandboxAppId, permissions);
         }
-        sendAppIdsTrafficPermission(netdPermissionsAppIds);
+        sendUidsTrafficPermission(userId, netdPermissionsAppIds);
     }
 
     /**
@@ -1210,7 +1227,7 @@ public class PermissionMonitor {
      * @hide
      */
     @VisibleForTesting
-    void sendAppIdsTrafficPermission(SparseIntArray netdPermissionsAppIds) {
+    void sendUidsTrafficPermission(final int userId, SparseIntArray netdPermissionsAppIds) {
         ensureRunningOnHandlerThread();
         final ArrayList<Integer> allPermissionAppIds = new ArrayList<>();
         final ArrayList<Integer> internetPermissionAppIds = new ArrayList<>();
@@ -1245,27 +1262,39 @@ public class PermissionMonitor {
             if (allPermissionAppIds.size() != 0) {
                 mBpfNetMaps.setNetPermForUids(
                         TRAFFIC_PERMISSION_INTERNET | TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS,
-                        toIntArray(allPermissionAppIds));
+                        appIdListToUidArray(userId, allPermissionAppIds));
             }
             if (internetPermissionAppIds.size() != 0) {
                 mBpfNetMaps.setNetPermForUids(TRAFFIC_PERMISSION_INTERNET,
-                        toIntArray(internetPermissionAppIds));
+                        appIdListToUidArray(userId, internetPermissionAppIds));
             }
             if (updateStatsPermissionAppIds.size() != 0) {
                 mBpfNetMaps.setNetPermForUids(TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS,
-                        toIntArray(updateStatsPermissionAppIds));
+                        appIdListToUidArray(userId, updateStatsPermissionAppIds));
             }
             if (noPermissionAppIds.size() != 0) {
                 mBpfNetMaps.setNetPermForUids(PERMISSION_NONE,
-                        toIntArray(noPermissionAppIds));
+                        appIdListToUidArray(userId, noPermissionAppIds));
             }
             if (uninstalledAppIds.size() != 0) {
                 mBpfNetMaps.setNetPermForUids(TRAFFIC_PERMISSION_UNINSTALLED,
-                        toIntArray(uninstalledAppIds));
+                        appIdListToUidArray(userId, uninstalledAppIds));
             }
         } catch (RemoteException | ServiceSpecificException e) {
             Log.e(TAG, "Pass appId list of special permission failed." + e);
         }
+    }
+
+    private static int[] appIdListToUidArray(int userId, ArrayList<Integer> appIds) {
+        final int cnt = appIds.size();
+        int[] array = new int[cnt];
+
+        for (int i = 0; i < cnt; ++i) {
+            int appId = appIds.get(i).intValue();
+            array[i] = UserHandle.getUid(userId, appId);
+        }
+
+        return array;
     }
 
     private synchronized void onSettingChanged() {
