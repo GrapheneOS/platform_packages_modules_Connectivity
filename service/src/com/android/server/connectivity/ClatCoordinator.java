@@ -89,7 +89,7 @@ public class ClatCoordinator {
     static final String INIT_V4ADDR_STRING = "192.0.0.4";
     @VisibleForTesting
     static final int INIT_V4ADDR_PREFIX_LEN = 29;
-    private static final InetAddress GOOGLE_DNS_4 = InetAddress.parseNumericAddress("8.8.8.8");
+    private static final InetAddress CLOUDFLARE_DNS_4 = InetAddress.parseNumericAddress("1.1.1.1");
 
     private static final int INVALID_IFINDEX = 0;
 
@@ -667,7 +667,7 @@ public class ClatCoordinator {
         final int detectedMtu;
         try {
             detectedMtu = mDeps.detectMtu(pfx96Str,
-                ByteBuffer.wrap(GOOGLE_DNS_4.getAddress()).getInt(), fwmark);
+                ByteBuffer.wrap(CLOUDFLARE_DNS_4.getAddress()).getInt(), fwmark);
         } catch (IOException e) {
             maybeCleanUp(tunFd, readSock6, writeSock6);
             throw new IOException("Detect MTU on " + tunIface + " failed: " + e);
