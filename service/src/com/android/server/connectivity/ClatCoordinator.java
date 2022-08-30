@@ -90,7 +90,7 @@ public class ClatCoordinator {
     static final String INIT_V4ADDR_STRING = "192.0.0.4";
     @VisibleForTesting
     static final int INIT_V4ADDR_PREFIX_LEN = 29;
-    private static final InetAddress GOOGLE_DNS_4 = InetAddress.parseNumericAddress("8.8.8.8");
+    private static final InetAddress CLOUDFLARE_DNS_4 = InetAddress.parseNumericAddress("1.1.1.1");
 
     private static final int INVALID_IFINDEX = 0;
 
@@ -646,7 +646,7 @@ public class ClatCoordinator {
             mNetd.interfaceSetEnableIPv6(tunIface, false /* enabled */);
             // Detect ipv4 mtu.
             final int detectedMtu = mDeps.detectMtu(pfx96Str,
-                    ByteBuffer.wrap(GOOGLE_DNS_4.getAddress()).getInt(), fwmark);
+                    ByteBuffer.wrap(CLOUDFLARE_DNS_4.getAddress()).getInt(), fwmark);
             final int mtu = adjustMtu(detectedMtu);
             Log.i(TAG, "detected ipv4 mtu of " + detectedMtu + " adjusted to " + mtu);
             // Config tun interface mtu, address and bring up.
