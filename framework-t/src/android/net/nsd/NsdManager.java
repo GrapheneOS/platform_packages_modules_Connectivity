@@ -38,6 +38,7 @@ import android.net.ConnectivityManager.NetworkCallback;
 import android.net.ConnectivityThread;
 import android.net.Network;
 import android.net.NetworkRequest;
+import android.net.nsd.IOffloadEngine;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -723,11 +724,41 @@ public final class NsdManager {
         // Instead of launching separate threads to handle tasks from the various instances.
         mHandler = new ServiceHandler(ConnectivityThread.getInstanceLooper());
 
-        try {
-            mService = service.connect(new NsdCallbackImpl(mHandler), CompatChanges.isChangeEnabled(
-                    ENABLE_PLATFORM_MDNS_BACKEND));
-        } catch (RemoteException e) {
-            throw new RuntimeException("Failed to connect to NsdService");
+        if (android.content.pm.SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            // INsdManager#connect() enforces INTERNET permission
+            mService = new INsdServiceConnector() {
+                final NsdCallbackImpl callback = new NsdCallbackImpl(mHandler);
+
+                @Override public void registerService(int listenerKey, AdvertisingRequest advertisingRequest) {
+                    callback.onRegisterServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+                }
+                @Override public void unregisterService(int listenerKey) {
+                    callback.onUnregisterServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+                }
+                @Override public void discoverServices(int listenerKey, DiscoveryRequest discoveryRequest) {
+                    callback.onDiscoverServicesFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+                }
+                @Override public void stopDiscovery(int listenerKey) {
+                    callback.onStopDiscoveryFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+                }
+                @Override public void resolveService(int listenerKey, NsdServiceInfo serviceInfo) {
+                    callback.onResolveServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+                }
+                @Override public void startDaemon() {}
+                @Override public void stopResolution(int listenerKey) {}
+                @Override public void registerServiceInfoCallback(int listenerKey, NsdServiceInfo serviceInfo) {}
+                @Override public void unregisterServiceInfoCallback(int listenerKey) {}
+                @Override public void registerOffloadEngine(String ifaceName, IOffloadEngine cb, long offloadCapabilities, long offloadType) {}
+                @Override public void unregisterOffloadEngine(IOffloadEngine cb) {}
+                @Override public android.os.IBinder asBinder() { return null; }
+            };
+        } else {
+            try {
+                mService = service.connect(new NsdCallbackImpl(mHandler), CompatChanges.isChangeEnabled(
+                        ENABLE_PLATFORM_MDNS_BACKEND));
+            } catch (RemoteException e) {
+                throw new RuntimeException("Failed to connect to NsdService");
+            }
         }
 
         // Only proactively start the daemon if the target SDK < S AND platform < V, For target
