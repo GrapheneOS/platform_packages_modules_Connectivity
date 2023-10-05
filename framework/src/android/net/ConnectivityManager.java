@@ -45,6 +45,7 @@ import android.compat.annotation.UnsupportedAppUsage;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.SpecialRuntimePermAppUtils;
 import android.net.ConnectivityDiagnosticsManager.DataStallReport.DetectionMethod;
 import android.net.IpSecManager.UdpEncapsulationSocket;
 import android.net.SocketKeepalive.Callback;
@@ -1495,6 +1496,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @Nullable
     public NetworkInfo getActiveNetworkInfo() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getActiveNetworkInfo();
         } catch (RemoteException e) {
@@ -1516,6 +1521,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @Nullable
     public Network getActiveNetwork() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getActiveNetwork();
         } catch (RemoteException e) {
@@ -1749,6 +1758,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @Nullable
     public NetworkInfo getNetworkInfo(int networkType) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getNetworkInfo(networkType);
         } catch (RemoteException e) {
@@ -1770,6 +1783,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @Nullable
     public NetworkInfo getNetworkInfo(@Nullable Network network) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         return getNetworkInfoForUid(network, Process.myUid(), false);
     }
 
@@ -1796,6 +1813,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @NonNull
     public NetworkInfo[] getAllNetworkInfo() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new NetworkInfo[0];
+        }
+
         try {
             return mService.getAllNetworkInfo();
         } catch (RemoteException e) {
@@ -1835,6 +1856,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @UnsupportedAppUsage
     public Network getNetworkForType(int networkType) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getNetworkForType(networkType);
         } catch (RemoteException e) {
@@ -1858,6 +1883,10 @@ public class ConnectivityManager {
     @NonNull
     @Deprecated
     public Network[] getAllNetworks() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new Network[0];
+        }
+
         try {
             return mService.getAllNetworks();
         } catch (RemoteException e) {
@@ -1896,6 +1925,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 109783091)
     public LinkProperties getActiveLinkProperties() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getActiveLinkProperties();
         } catch (RemoteException e) {
@@ -1921,6 +1954,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 130143562)
     public LinkProperties getLinkProperties(int networkType) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getLinkPropertiesForType(networkType);
         } catch (RemoteException e) {
@@ -1938,6 +1975,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @Nullable
     public LinkProperties getLinkProperties(@Nullable Network network) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getLinkProperties(network);
         } catch (RemoteException e) {
@@ -1992,6 +2033,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @Nullable
     public NetworkCapabilities getNetworkCapabilities(@Nullable Network network) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return null;
+        }
+
         try {
             return mService.getNetworkCapabilities(
                     network, mContext.getOpPackageName(), getAttributionTag());
@@ -3004,6 +3049,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage
     @Deprecated
     public String[] getTetherableIfaces() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new String[0];
+        }
+
         return getTetheringManager().getTetherableIfaces();
     }
 
@@ -3019,6 +3068,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage
     @Deprecated
     public String[] getTetheredIfaces() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new String[0];
+        }
+
         return getTetheringManager().getTetheredIfaces();
     }
 
@@ -3040,6 +3093,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage
     @Deprecated
     public String[] getTetheringErroredIfaces() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new String[0];
+        }
+
         return getTetheringManager().getTetheringErroredIfaces();
     }
 
@@ -3350,6 +3407,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage
     @Deprecated
     public String[] getTetherableUsbRegexs() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new String[0];
+        }
+
         return getTetheringManager().getTetherableUsbRegexs();
     }
 
@@ -3368,6 +3429,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage
     @Deprecated
     public String[] getTetherableWifiRegexs() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new String[0];
+        }
+
         return getTetheringManager().getTetherableWifiRegexs();
     }
 
@@ -3387,6 +3452,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage
     @Deprecated
     public String[] getTetherableBluetoothRegexs() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return new String[0];
+        }
+
         return getTetheringManager().getTetherableBluetoothRegexs();
     }
 
@@ -3527,6 +3596,10 @@ public class ConnectivityManager {
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
     @Deprecated
     public int getLastTetherError(String iface) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return TetheringManager.TETHER_ERROR_UNKNOWN_IFACE;
+        }
+
         int error = getTetheringManager().getLastTetherError(iface);
         if (error == TetheringManager.TETHER_ERROR_UNKNOWN_TYPE) {
             // TETHER_ERROR_UNKNOWN_TYPE was introduced with TetheringManager and has never been
@@ -3669,6 +3742,10 @@ public class ConnectivityManager {
      *                        Internet using {@code network} or {@code false} if not.
      */
     public void reportNetworkConnectivity(@Nullable Network network, boolean hasConnectivity) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         printStackTrace();
         try {
             mService.reportNetworkConnectivity(network, hasConnectivity);
@@ -3775,6 +3852,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.P, trackingBug = 130143562)
     public boolean isNetworkSupported(int networkType) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return false;
+        }
+
         try {
             return mService.isNetworkSupported(networkType);
         } catch (RemoteException e) {
@@ -3795,6 +3876,10 @@ public class ConnectivityManager {
      */
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public boolean isActiveNetworkMetered() {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return false;
+        }
+
         try {
             return mService.isActiveNetworkMetered();
         } catch (RemoteException e) {
@@ -5153,6 +5238,10 @@ public class ConnectivityManager {
      *                  corresponding NetworkRequest you'd like to remove. Cannot be null.
      */
     public void releaseNetworkRequest(@NonNull PendingIntent operation) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         printStackTrace();
         checkPendingIntentNotNull(operation);
         try {
@@ -5200,6 +5289,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public void registerNetworkCallback(@NonNull NetworkRequest request,
             @NonNull NetworkCallback networkCallback) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         registerNetworkCallback(request, networkCallback, getDefaultHandler());
     }
 
@@ -5228,6 +5321,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public void registerNetworkCallback(@NonNull NetworkRequest request,
             @NonNull NetworkCallback networkCallback, @NonNull Handler handler) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         CallbackHandler cbHandler = new CallbackHandler(handler);
         NetworkCapabilities nc = request.networkCapabilities;
         sendRequestForNetwork(nc, networkCallback, 0, LISTEN, TYPE_NONE, cbHandler);
@@ -5276,6 +5373,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public void registerNetworkCallback(@NonNull NetworkRequest request,
             @NonNull PendingIntent operation) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         printStackTrace();
         checkPendingIntentNotNull(operation);
         try {
@@ -5311,6 +5412,10 @@ public class ConnectivityManager {
      */
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public void registerDefaultNetworkCallback(@NonNull NetworkCallback networkCallback) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         registerDefaultNetworkCallback(networkCallback, getDefaultHandler());
     }
 
@@ -5337,6 +5442,10 @@ public class ConnectivityManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public void registerDefaultNetworkCallback(@NonNull NetworkCallback networkCallback,
             @NonNull Handler handler) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         registerDefaultNetworkCallbackForUid(Process.INVALID_UID, networkCallback, handler);
     }
 
@@ -5442,6 +5551,10 @@ public class ConnectivityManager {
     @SuppressLint("ExecutorRegistration")
     public void registerBestMatchingNetworkCallback(@NonNull NetworkRequest request,
             @NonNull NetworkCallback networkCallback, @NonNull Handler handler) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         final NetworkCapabilities nc = request.networkCapabilities;
         final CallbackHandler cbHandler = new CallbackHandler(handler);
         sendRequestForNetwork(nc, networkCallback, 0, LISTEN_FOR_BEST, TYPE_NONE, cbHandler);
@@ -5460,6 +5573,10 @@ public class ConnectivityManager {
      * @return {@code true} on success, {@code false} if the {@link Network} is no longer valid.
      */
     public boolean requestBandwidthUpdate(@NonNull Network network) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return false;
+        }
+
         try {
             return mService.requestBandwidthUpdate(network);
         } catch (RemoteException e) {
@@ -5480,6 +5597,10 @@ public class ConnectivityManager {
      * @param networkCallback The {@link NetworkCallback} used when making the request.
      */
     public void unregisterNetworkCallback(@NonNull NetworkCallback networkCallback) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         printStackTrace();
         checkCallbackNotNull(networkCallback);
         final List<NetworkRequest> reqs = new ArrayList<>();
@@ -5522,6 +5643,10 @@ public class ConnectivityManager {
      *                  Cannot be null.
      */
     public void unregisterNetworkCallback(@NonNull PendingIntent operation) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return;
+        }
+
         releaseNetworkRequest(operation);
     }
 
@@ -5741,6 +5866,10 @@ public class ConnectivityManager {
      */
     @RequiresPermission(android.Manifest.permission.ACCESS_NETWORK_STATE)
     public @MultipathPreference int getMultipathPreference(@Nullable Network network) {
+        if (SpecialRuntimePermAppUtils.isInternetCompatEnabled()) {
+            return 0;
+        }
+
         try {
             return mService.getMultipathPreference(network);
         } catch (RemoteException e) {
