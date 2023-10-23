@@ -38,6 +38,10 @@ public final class ConnectivityFlags {
 
     public static final String REQUEST_RESTRICTED_WIFI =
             "request_restricted_wifi";
+
+    public static final String INGRESS_TO_VPN_ADDRESS_FILTERING =
+            "ingress_to_vpn_address_filtering";
+
     private boolean mNoRematchAllRequestsOnRegister;
 
     /**
