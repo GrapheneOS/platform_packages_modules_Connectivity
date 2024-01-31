@@ -2106,6 +2106,129 @@ class NsdManagerTest {
         }
     }
 
+    @Test
+    fun testRegisterService_registerImmediatelyAfterUnregister_serviceFound() {
+        val info1 = makeTestServiceInfo(network = testNetwork1.network).apply {
+            serviceName = "service11111"
+            port = 11111
+        }
+        val info2 = makeTestServiceInfo(network = testNetwork1.network).apply {
+            serviceName = "service22222"
+            port = 22222
+        }
+        val registrationRecord1 = NsdRegistrationRecord()
+        val discoveryRecord1 = NsdDiscoveryRecord()
+        val registrationRecord2 = NsdRegistrationRecord()
+        val discoveryRecord2 = NsdDiscoveryRecord()
+        tryTest {
+            registerService(registrationRecord1, info1)
+            nsdManager.discoverServices(serviceType,
+                    NsdManager.PROTOCOL_DNS_SD, testNetwork1.network, { it.run() },
+                    discoveryRecord1)
+            discoveryRecord1.waitForServiceDiscovered(info1.serviceName,
+                    serviceType, testNetwork1.network)
+            nsdManager.stopServiceDiscovery(discoveryRecord1)
+
+            nsdManager.unregisterService(registrationRecord1)
+            registerService(registrationRecord2, info2)
+            nsdManager.discoverServices(serviceType,
+                    NsdManager.PROTOCOL_DNS_SD, testNetwork1.network, { it.run() },
+                    discoveryRecord2)
+            val infoDiscovered = discoveryRecord2.waitForServiceDiscovered(info2.serviceName,
+                    serviceType, testNetwork1.network)
+            val infoResolved = resolveService(infoDiscovered)
+            assertEquals(22222, infoResolved.port)
+        } cleanupStep {
+            nsdManager.stopServiceDiscovery(discoveryRecord2)
+            discoveryRecord2.expectCallback<DiscoveryStopped>()
+        } cleanup {
+            nsdManager.unregisterService(registrationRecord2)
+        }
+    }
+
+    @Test
+    fun testServiceTypeClientRemovedAfterSocketDestroyed() {
+        val si = makeTestServiceInfo(testNetwork1.network)
+        // Register service on testNetwork1
+        val registrationRecord = NsdRegistrationRecord()
+        registerService(registrationRecord, si)
+        // Register multiple discovery requests.
+        val discoveryRecord1 = NsdDiscoveryRecord()
+        val discoveryRecord2 = NsdDiscoveryRecord()
+        val discoveryRecord3 = NsdDiscoveryRecord()
+        nsdManager.discoverServices("_test1._tcp", NsdManager.PROTOCOL_DNS_SD,
+                testNetwork1.network, { it.run() }, discoveryRecord1)
+        nsdManager.discoverServices("_test2._tcp", NsdManager.PROTOCOL_DNS_SD,
+                testNetwork1.network, { it.run() }, discoveryRecord2)
+        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryRecord3)
+
+        tryTest {
+            discoveryRecord1.expectCallback<DiscoveryStarted>()
+            discoveryRecord2.expectCallback<DiscoveryStarted>()
+            discoveryRecord3.expectCallback<DiscoveryStarted>()
+            val foundInfo = discoveryRecord3.waitForServiceDiscovered(
+                    serviceName, serviceType, testNetwork1.network)
+            assertEquals(testNetwork1.network, foundInfo.network)
+            // Verify that associated ServiceTypeClients has been created for testNetwork1.
+            assertTrue("No serviceTypeClients for testNetwork1.",
+                    hasServiceTypeClientsForNetwork(
+                            getServiceTypeClients(), testNetwork1.network))
+
+            // Disconnect testNetwork1
+            runAsShell(MANAGE_TEST_NETWORKS) {
+                testNetwork1.close(cm)
+            }
+
+            // Verify that no ServiceTypeClients for testNetwork1.
+            discoveryRecord3.expectCallback<ServiceLost>()
+            assertFalse("Still has serviceTypeClients for testNetwork1.",
+                    hasServiceTypeClientsForNetwork(
+                            getServiceTypeClients(), testNetwork1.network))
+        } cleanupStep {
+            nsdManager.stopServiceDiscovery(discoveryRecord1)
+            nsdManager.stopServiceDiscovery(discoveryRecord2)
+            nsdManager.stopServiceDiscovery(discoveryRecord3)
+            discoveryRecord1.expectCallback<DiscoveryStopped>()
+            discoveryRecord2.expectCallback<DiscoveryStopped>()
+            discoveryRecord3.expectCallback<DiscoveryStopped>()
+        } cleanup {
+            nsdManager.unregisterService(registrationRecord)
+            registrationRecord.expectCallback<ServiceUnregistered>()
+        }
+    }
+
+    private fun hasServiceTypeClientsForNetwork(clients: List<String>, network: Network): Boolean {
+        for (client in clients) {
+            val netid = client.substring(
+                    client.indexOf("network=") + "network=".length,
+                    client.indexOf("interfaceIndex=") - 1)
+            if (netid == network.toString()) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Get ServiceTypeClient logs from the system dump servicediscovery section.
+     *
+     * The sample output:
+     *     ServiceTypeClient: Type{_nmt079019787._tcp.local} \
+     *         SocketKey{ network=116 interfaceIndex=68 } with 1 listeners.
+     *     ServiceTypeClient: Type{_nmt079019787._tcp.local} \
+     *         SocketKey{ network=115 interfaceIndex=67 } with 1 listeners.
+     */
+    private fun getServiceTypeClients(): List<String> {
+        return SystemUtil.runShellCommand(
+                InstrumentationRegistry.getInstrumentation(), "dumpsys servicediscovery")
+                .split("\n").mapNotNull { line ->
+                    line.indexOf("ServiceTypeClient:").let { idx ->
+                        if (idx == -1) null
+                        else line.substring(idx)
+                    }
+                }
+    }
+
     private fun buildConflictingAnnouncement(): ByteBuffer {
         /*
         Generated with:

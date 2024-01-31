@@ -179,7 +179,7 @@ class MdnsInterfaceAdvertiserTest {
         // Exit announcements finish: the advertiser has no left service and destroys itself
         announceCb.onFinished(testExitInfo)
         thread.waitForIdle(TIMEOUT_MS)
-        verify(cb).onDestroyed(socket)
+        verify(cb).onAllServicesRemoved(socket)
     }
 
     @Test
