@@ -303,8 +303,8 @@ public class MdnsServiceTypeClient {
         serviceCache.unregisterServiceExpiredCallback(cacheKey);
     }
 
-    private static MdnsServiceInfo buildMdnsServiceInfoFromResponse(
-            @NonNull MdnsResponse response, @NonNull String[] serviceTypeLabels) {
+    private static MdnsServiceInfo buildMdnsServiceInfoFromResponse(@NonNull MdnsResponse response,
+            @NonNull String[] serviceTypeLabels, long elapsedRealtimeMillis) {
         String[] hostName = null;
         int port = 0;
         if (response.hasServiceRecord()) {
@@ -351,7 +351,7 @@ public class MdnsServiceTypeClient {
                 textEntries,
                 response.getInterfaceIndex(),
                 response.getNetwork(),
-                now.plusMillis(response.getMinRemainingTtl(now.toEpochMilli())));
+                now.plusMillis(response.getMinRemainingTtl(elapsedRealtimeMillis)));
     }
 
     private List<MdnsResponse> getExistingServices() {
@@ -380,8 +380,8 @@ public class MdnsServiceTypeClient {
         if (existingInfo == null) {
             for (MdnsResponse existingResponse : serviceCache.getCachedServices(cacheKey)) {
                 if (!responseMatchesOptions(existingResponse, searchOptions)) continue;
-                final MdnsServiceInfo info =
-                        buildMdnsServiceInfoFromResponse(existingResponse, serviceTypeLabels);
+                final MdnsServiceInfo info = buildMdnsServiceInfoFromResponse(
+                        existingResponse, serviceTypeLabels, clock.elapsedRealtime());
                 listener.onServiceNameDiscovered(info, true /* isServiceFromCache */);
                 listenerInfo.setServiceDiscovered(info.getServiceInstanceName());
                 if (existingResponse.isComplete()) {
@@ -561,7 +561,7 @@ public class MdnsServiceTypeClient {
             if (response.getServiceInstanceName() != null) {
                 listeners.valueAt(i).unsetServiceDiscovered(response.getServiceInstanceName());
                 final MdnsServiceInfo serviceInfo = buildMdnsServiceInfoFromResponse(
-                        response, serviceTypeLabels);
+                        response, serviceTypeLabels, clock.elapsedRealtime());
                 if (response.isComplete()) {
                     sharedLog.log(message + ". onServiceRemoved: " + serviceInfo);
                     listener.onServiceRemoved(serviceInfo);
@@ -605,8 +605,8 @@ public class MdnsServiceTypeClient {
                         + " %b, responseIsComplete: %b",
                 serviceInstanceName, newInCache, serviceBecomesComplete,
                 response.isComplete()));
-        MdnsServiceInfo serviceInfo =
-                buildMdnsServiceInfoFromResponse(response, serviceTypeLabels);
+        final MdnsServiceInfo serviceInfo = buildMdnsServiceInfoFromResponse(
+                response, serviceTypeLabels, clock.elapsedRealtime());
 
         for (int i = 0; i < listeners.size(); i++) {
             // If a service stops matching the options (currently can only happen if it loses a
