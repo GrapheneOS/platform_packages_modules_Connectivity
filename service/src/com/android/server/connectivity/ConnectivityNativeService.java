@@ -23,6 +23,7 @@ import android.net.connectivity.aidl.ConnectivityNative;
 import android.os.Binder;
 import android.os.Process;
 import android.os.ServiceSpecificException;
+import android.os.UserHandle;
 import android.system.ErrnoException;
 import android.util.Log;
 
@@ -67,8 +68,8 @@ public class ConnectivityNativeService extends ConnectivityNative.Stub {
     }
 
     private void enforceBlockPortPermission() {
-        final int uid = Binder.getCallingUid();
-        if (uid == Process.ROOT_UID || uid == Process.PHONE_UID) return;
+        final int appId = UserHandle.getAppId(Binder.getCallingUid());
+        if (appId == Process.ROOT_UID || appId == Process.PHONE_UID) return;
         PermissionUtils.enforceNetworkStackPermission(mContext);
     }
 
