@@ -46,6 +46,10 @@ static const int BPF_MATCH = 1;
 static const bool TRACE_ON = true;
 static const bool TRACE_OFF = false;
 
+// Used for setsockopt/lockdown_vpn_multicast.
+static const int SETSOCKOPT_EPERM = 0;
+static const int SETSOCKOPT_ALLOWED = 1;
+
 // offsetof(struct iphdr, ihl) -- but that's a bitfield
 #define IPPROTO_IHL_OFF 0
 
@@ -398,18 +402,39 @@ static __always_inline inline bool ingress_should_discard(struct __sk_buff* skb,
     return true;  // disallowed interface
 }
 
+static __always_inline inline bool is_multicast(struct __sk_buff* skb,
+                                                const struct kver_uint kver) {
+    uint8_t addr_first_octet;
+    if (skb->protocol == htons(ETH_P_IP)) {
+        __u32 daddr4;
+        (void) bpf_skb_load_bytes_net(skb, IP4_OFFSET(daddr), &daddr4, sizeof(daddr4), kver);
+        addr_first_octet = (ntohl(daddr4) >> 24) & 0xFF;
+        if (addr_first_octet >= 224 && addr_first_octet <= 239) return true;
+    } else if (skb->protocol == htons(ETH_P_IPV6)) {
+        __u32 daddr6[4];
+        (void) bpf_skb_load_bytes_net(skb, IP6_OFFSET(daddr), &daddr6, sizeof(daddr6), kver);
+        addr_first_octet = (ntohl(daddr6[0]) >> 24) & 0xFF;
+        if (addr_first_octet == 0xFF) return true;
+    }
+    return false;
+}
+
 static __always_inline inline int bpf_owner_match(struct __sk_buff* skb, uint32_t uid,
                                                   const struct egress_bool egress,
                                                   const struct kver_uint kver) {
-    if (is_system_uid(uid)) return PASS;
-
-    if (skip_owner_match(skb, egress, kver)) return PASS;
-
     BpfConfig enabledRules = getConfig(UID_RULES_CONFIGURATION_KEY);
 
     UidOwnerValue* uidEntry = bpf_uid_owner_map_lookup_elem(&uid);
     uint32_t uidRules = uidEntry ? uidEntry->rule : 0;
     uint32_t allowed_iif = uidEntry ? uidEntry->iif : 0;
+
+    if ((uidRules & LOCKDOWN_VPN_MATCH) && is_multicast(skb, kver)) {
+        return DROP;
+    }
+
+    if (is_system_uid(uid)) return PASS;
+
+    if (skip_owner_match(skb, egress, kver)) return PASS;
 
     if (isBlockedByUidRules(enabledRules, uidRules)) return DROP;
 
@@ -455,6 +480,8 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb,
     // packets to an unconnected udp socket.
     // But it can also happen for egress from a timewait socket.
     // Let's treat such cases as 'root' which is_system_uid()
+    // TODO: Verify that this can never occur for multicast traffic. Have done manual testing, but
+    //  need to read the kernel networking code to see if it is possible.
     if (sock_uid == 65534) sock_uid = 0;
 
     uint64_t cookie = bpf_get_socket_cookie(skb);  // 0 iff !skb->sk
@@ -661,6 +688,59 @@ DEFINE_NETD_BPF_PROG_KVER("cgroupsock/inet/create", AID_ROOT, AID_ROOT, inet_soc
 (struct bpf_sock* sk) {
     // A return value of 1 means allow, everything else means deny.
     return (get_app_permissions() & BPF_PERMISSION_INTERNET) ? 1 : 0;
+}
+
+// This program prevents kernel-generated multicast traffic (IGMP, MLD) from being triggered by a
+// UID that is under a lockdown VPN.
+// A known leak that still exists is when a UID joins a multicast group prior to being under a
+// lockdown VPN and then becomes under a lockdown VPN. In this case the IGMP/MLD will be generated
+// when the kernel destroys the thread. This is considered very low severity.
+DEFINE_NETD_BPF_PROG_KVER("setsockopt/lockdown_vpn_multicast", AID_ROOT, AID_ROOT,
+                          lockdown_vpn_multicast, KVER_5_8)
+(struct bpf_sockopt* ctx) {
+    // Force use of original userspace value in setsockopt call, otherwise will have problems with
+    // values > PAGE_SIZE.
+    // https://github.com/torvalds/linux/commit/d8fe449a9c51a37d844ab607e14e2f5c657d3cf2
+    ctx->optlen = 0;
+
+    uint64_t gid_uid = bpf_get_current_uid_gid();
+    uint32_t uid = (gid_uid & 0xFFFFFFFF);
+
+    UidOwnerValue* uidEntry = bpf_uid_owner_map_lookup_elem(&uid);
+    uint32_t uidRule = uidEntry ? uidEntry->rule : 0;
+
+    if (!(uidRule & LOCKDOWN_VPN_MATCH)) {
+        return SETSOCKOPT_ALLOWED;
+    }
+
+    if (ctx->level == IPPROTO_IP
+            && (ctx->optname == IP_ADD_MEMBERSHIP
+            || ctx->optname == IP_DROP_MEMBERSHIP
+            || ctx->optname == IP_ADD_SOURCE_MEMBERSHIP
+            || ctx->optname == IP_DROP_SOURCE_MEMBERSHIP
+            || ctx->optname == IP_BLOCK_SOURCE
+            || ctx->optname == IP_UNBLOCK_SOURCE
+            || ctx->optname == IP_MSFILTER)) {
+        return SETSOCKOPT_EPERM;
+    }
+
+    if (ctx->level == IPPROTO_IPV6
+            && (ctx->optname == IPV6_ADD_MEMBERSHIP /** IPV6_JOIN_GROUP **/
+            || ctx->optname == IPV6_DROP_MEMBERSHIP /** IPV6_LEAVE_GROUP **/)) {
+        return SETSOCKOPT_EPERM;
+    }
+
+    if ((ctx->level == IPPROTO_IP || ctx->level == IPPROTO_IPV6)
+            && (ctx->optname == MCAST_JOIN_GROUP
+            || ctx->optname == MCAST_LEAVE_GROUP
+            || ctx->optname == MCAST_BLOCK_SOURCE
+            || ctx->optname == MCAST_UNBLOCK_SOURCE
+            || ctx->optname == MCAST_JOIN_SOURCE_GROUP
+            || ctx->optname == MCAST_LEAVE_SOURCE_GROUP)) {
+        return SETSOCKOPT_EPERM;
+    }
+
+    return SETSOCKOPT_ALLOWED;
 }
 
 LICENSE("Apache 2.0");
