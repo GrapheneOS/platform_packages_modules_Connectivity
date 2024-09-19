@@ -149,7 +149,10 @@ static Status initPrograms(const char* cg2_path) {
                                         cg_fd, BPF_CGROUP_UDP6_SENDMSG));
         }
 
-        if (isAtLeastKernelVersion(5, 4, 0)) {
+        // BPF_PROG_TYPE_CGROUP_SOCKOPT was introduced in 5.3, but
+        // https://github.com/torvalds/linux/commit/d8fe449a9c51a37d844ab607e14e2f5c657d3cf2 was
+        // added in 5.8, which is required.
+        if (isAtLeastKernelVersion(5, 8, 0)) {
             RETURN_IF_NOT_OK(attachProgramToCgroup(CGROUP_GETSOCKOPT_PROG_PATH,
                                         cg_fd, BPF_CGROUP_GETSOCKOPT));
             RETURN_IF_NOT_OK(attachProgramToCgroup(CGROUP_SETSOCKOPT_PROG_PATH,
@@ -188,7 +191,7 @@ static Status initPrograms(const char* cg2_path) {
             if (queryProgram(cg_fd, BPF_CGROUP_UDP6_SENDMSG) <= 0) abort();
         }
 
-        if (isAtLeastKernelVersion(5, 4, 0)) {
+        if (isAtLeastKernelVersion(5, 8, 0)) {
             if (queryProgram(cg_fd, BPF_CGROUP_GETSOCKOPT) <= 0) abort();
             if (queryProgram(cg_fd, BPF_CGROUP_SETSOCKOPT) <= 0) abort();
         }
