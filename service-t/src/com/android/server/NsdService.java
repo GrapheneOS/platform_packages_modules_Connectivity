@@ -44,6 +44,7 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresApi;
 import android.app.ActivityManager;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.ConnectivityManager;
@@ -79,6 +80,7 @@ import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.provider.DeviceConfig;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.Log;
@@ -768,6 +770,14 @@ public class NsdService extends INsdManager.Stub {
                 return true;
             }
 
+            private boolean lockdownVpnEnabledForUser(int uid) {
+                // TODO: Use Settings.Secure.ALWAYS_ON_VPN_LOCKDOWN. It doesn't compile because it
+                //  can't be found.
+                ContentResolver cr = mContext.createContextAsUser(UserHandle.getUserHandleForUid(
+                        uid), 0).getContentResolver();
+                return Settings.Secure.getInt(cr, "always_on_vpn_lockdown", 0) == 1;
+            }
+
             @Override
             public boolean processMessage(Message msg) {
                 final ClientInfo clientInfo;
@@ -1273,6 +1283,11 @@ public class NsdService extends INsdManager.Stub {
                         break;
                     case NsdManager.REGISTER_CLIENT:
                         final ConnectorArgs arg = (ConnectorArgs) msg.obj;
+                        if (lockdownVpnEnabledForUser(arg.uid)) {
+                            Log.i(TAG, "uid: " + arg.uid + " using NsdService while under " +
+                                    "lockdown VPN");
+                            break;
+                        }
                         final INsdManagerCallback cb = arg.callback;
                         try {
                             cb.asBinder().linkToDeath(arg.connector, 0);
