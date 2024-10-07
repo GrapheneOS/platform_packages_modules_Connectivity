@@ -6002,12 +6002,10 @@ public class ConnectivityService extends IConnectivityManager.Stub
             // TODO : The only way out of this is to diff old defaults and new defaults, and only
             // remove ranges for those requests that won't have a replacement
             final NetworkAgentInfo satisfier = nri.getSatisfier();
-            if (null != satisfier && !satisfier.isDestroyed()) {
+            if (null != satisfier) {
                 try {
-                    mNetd.networkRemoveUidRangesParcel(new NativeUidRangeConfig(
-                            satisfier.network.getNetId(),
-                            toUidRangeStableParcels(nri.getUids()),
-                            nri.getPreferenceOrderForNetd()));
+                    modifyNetworkUidRanges(false /* add */, satisfier, nri.getUids(),
+                            nri.getPreferenceOrderForNetd());
                 } catch (RemoteException e) {
                     loge("Exception setting network preference default network", e);
                 }
@@ -10270,8 +10268,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         return stableRanges;
     }
 
-    private void maybeCloseSockets(NetworkAgentInfo nai, Set<UidRange> ranges,
-            UidRangeParcel[] uidRangeParcels, int[] exemptUids) {
+    private void maybeCloseSockets(NetworkAgentInfo nai, Set<UidRange> ranges, int[] exemptUids) {
         if (nai.isVPN() && !nai.networkAgentConfig.allowBypass) {
             try {
                 if (mDeps.isAtLeastU()) {
@@ -10281,12 +10278,34 @@ public class ConnectivityService extends IConnectivityManager.Stub
                     }
                     mDeps.destroyLiveTcpSockets(UidRange.toIntRanges(ranges), exemptUidSet);
                 } else {
-                    mNetd.socketDestroy(uidRangeParcels, exemptUids);
+                    mNetd.socketDestroy(toUidRangeStableParcels(ranges), exemptUids);
                 }
             } catch (Exception e) {
                 loge("Exception in socket destroy: ", e);
             }
         }
+    }
+
+    private void modifyNetworkUidRanges(boolean add, NetworkAgentInfo nai, UidRangeParcel[] ranges,
+            int preference) throws RemoteException {
+        // UID ranges can be added or removed to a network that has already been destroyed (e.g., if
+        // the network disconnects, or a a multilayer request is filed after
+        // unregisterAfterReplacement is called).
+        if (nai.isDestroyed()) {
+            return;
+        }
+        final NativeUidRangeConfig config = new NativeUidRangeConfig(nai.network.netId,
+                ranges, preference);
+        if (add) {
+            mNetd.networkAddUidRangesParcel(config);
+        } else {
+            mNetd.networkRemoveUidRangesParcel(config);
+        }
+    }
+
+    private void modifyNetworkUidRanges(boolean add, NetworkAgentInfo nai, Set<UidRange> uidRanges,
+            int preference) throws RemoteException {
+        modifyNetworkUidRanges(add, nai, toUidRangeStableParcels(uidRanges), preference);
     }
 
     private void updateVpnUidRanges(boolean add, NetworkAgentInfo nai, Set<UidRange> uidRanges) {
@@ -10296,24 +10315,17 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // starting a legacy VPN, and remove VPN_UID here. (b/176542831)
         exemptUids[0] = VPN_UID;
         exemptUids[1] = nai.networkCapabilities.getOwnerUid();
-        UidRangeParcel[] ranges = toUidRangeStableParcels(uidRanges);
 
         // Close sockets before modifying uid ranges so that RST packets can reach to the server.
-        maybeCloseSockets(nai, uidRanges, ranges, exemptUids);
+        maybeCloseSockets(nai, uidRanges, exemptUids);
         try {
-            if (add) {
-                mNetd.networkAddUidRangesParcel(new NativeUidRangeConfig(
-                        nai.network.netId, ranges, PREFERENCE_ORDER_VPN));
-            } else {
-                mNetd.networkRemoveUidRangesParcel(new NativeUidRangeConfig(
-                        nai.network.netId, ranges, PREFERENCE_ORDER_VPN));
-            }
+            modifyNetworkUidRanges(add, nai, uidRanges, PREFERENCE_ORDER_VPN);
         } catch (Exception e) {
             loge("Exception while " + (add ? "adding" : "removing") + " uid ranges " + uidRanges +
                     " on netId " + nai.network.netId + ". " + e);
         }
         // Close sockets that established connection while requesting netd.
-        maybeCloseSockets(nai, uidRanges, ranges, exemptUids);
+        maybeCloseSockets(nai, uidRanges, exemptUids);
     }
 
     private boolean isProxySetOnAnyDefaultNetwork() {
@@ -10427,16 +10439,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
         toAdd.removeAll(prevUids);
         try {
             if (!toAdd.isEmpty()) {
-                mNetd.networkAddUidRangesParcel(new NativeUidRangeConfig(
-                        nai.network.netId,
-                        intsToUidRangeStableParcels(toAdd),
-                        PREFERENCE_ORDER_IRRELEVANT_BECAUSE_NOT_DEFAULT));
+                modifyNetworkUidRanges(true /* add */, nai, intsToUidRangeStableParcels(toAdd),
+                        PREFERENCE_ORDER_IRRELEVANT_BECAUSE_NOT_DEFAULT);
             }
             if (!toRemove.isEmpty()) {
-                mNetd.networkRemoveUidRangesParcel(new NativeUidRangeConfig(
-                        nai.network.netId,
-                        intsToUidRangeStableParcels(toRemove),
-                        PREFERENCE_ORDER_IRRELEVANT_BECAUSE_NOT_DEFAULT));
+                modifyNetworkUidRanges(false /* add */, nai, intsToUidRangeStableParcels(toRemove),
+                        PREFERENCE_ORDER_IRRELEVANT_BECAUSE_NOT_DEFAULT);
             }
         } catch (ServiceSpecificException e) {
             // Has the interface disappeared since the network was built ?
@@ -10791,16 +10799,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
                         + " any applications to set as the default." + nri);
             }
             if (null != newDefaultNetwork) {
-                mNetd.networkAddUidRangesParcel(new NativeUidRangeConfig(
-                        newDefaultNetwork.network.getNetId(),
-                        toUidRangeStableParcels(nri.getUids()),
-                        nri.getPreferenceOrderForNetd()));
+                modifyNetworkUidRanges(true /* add */, newDefaultNetwork, nri.getUids(),
+                        nri.getPreferenceOrderForNetd());
             }
             if (null != oldDefaultNetwork) {
-                mNetd.networkRemoveUidRangesParcel(new NativeUidRangeConfig(
-                        oldDefaultNetwork.network.getNetId(),
-                        toUidRangeStableParcels(nri.getUids()),
-                        nri.getPreferenceOrderForNetd()));
+                modifyNetworkUidRanges(false /* add */, oldDefaultNetwork, nri.getUids(),
+                        nri.getPreferenceOrderForNetd());
             }
         } catch (RemoteException | ServiceSpecificException e) {
             loge("Exception setting app default network", e);
