@@ -83,6 +83,7 @@ public class BpfNetMapsConstants {
     public static final long OEM_DENY_3_MATCH = (1 << 11);
     public static final long BACKGROUND_MATCH = (1 << 12);
     public static final long PENALTY_BOX_ADMIN_MATCH = (1 << 13);
+    public static final long LOCKDOWN_VPN_REGULAR_APP_MATCH = (1 << 30);
 
     public static final List<Pair<Long, String>> MATCH_LIST = Arrays.asList(
             Pair.create(HAPPY_BOX_MATCH, "HAPPY_BOX_MATCH"),
@@ -98,7 +99,8 @@ public class BpfNetMapsConstants {
             Pair.create(OEM_DENY_2_MATCH, "OEM_DENY_2_MATCH"),
             Pair.create(OEM_DENY_3_MATCH, "OEM_DENY_3_MATCH"),
             Pair.create(BACKGROUND_MATCH, "BACKGROUND_MATCH"),
-            Pair.create(PENALTY_BOX_ADMIN_MATCH, "PENALTY_BOX_ADMIN_MATCH")
+            Pair.create(PENALTY_BOX_ADMIN_MATCH, "PENALTY_BOX_ADMIN_MATCH"),
+            Pair.create(LOCKDOWN_VPN_REGULAR_APP_MATCH, "LOCKDOWN_VPN_REGULAR_APP_MATCH")
     );
 
     /**

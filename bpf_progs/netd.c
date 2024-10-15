@@ -777,6 +777,8 @@ DEFINE_NETD_V_BPF_PROG_KVER("getsockopt/prog", AID_ROOT, AID_ROOT, getsockopt_pr
 // group prior to being under a lockdown VPN and then becomes under a lockdown VPN. In this case the
 // IGMP/MLD will be generated when the kernel destroys the thread. This is considered very low
 // severity.
+// This program also prevents SO_BINDTODEVICE from being triggered by a UID that is under a lockdown
+// VPN as this can leak unicast traffic.
 DEFINE_NETD_BPF_PROG_KVER("setsockopt/prog", AID_ROOT, AID_ROOT, setsockopt_prog, KVER_5_8)
 (struct bpf_sockopt* ctx) {
     // Force use of original userspace value in setsockopt call, otherwise will have problems with
@@ -794,6 +796,18 @@ DEFINE_NETD_BPF_PROG_KVER("setsockopt/prog", AID_ROOT, AID_ROOT, setsockopt_prog
         return SETSOCKOPT_ALLOWED;
     }
 
+    // Prevent unicast leaks. Can only do this for regular apps as core system and system apps rely
+    // on this being allowed.
+    // TODO: Review IP_UNICAST_IF and IP_PKTINFO.
+    // TODO: Review PermissionMonitor#hasRestrictedNetworkPermission to see if this covers all of
+    //  the system uids that need to SO_BINDTODEVICE. These uids do not have LOCKDOWN_VPN_MATCH.
+    if ((uidRule & LOCKDOWN_VPN_REGULAR_APP_MATCH)
+            && ctx->level == SOL_SOCKET
+            && ctx->optname == SO_BINDTODEVICE) {
+        return SETSOCKOPT_EPERM;
+    }
+
+    // Prevent multicast leaks.
     if (ctx->level == IPPROTO_IP
             && (ctx->optname == IP_ADD_MEMBERSHIP
             || ctx->optname == IP_ADD_SOURCE_MEMBERSHIP
