@@ -28,6 +28,7 @@ import static android.net.BpfNetMapsConstants.INGRESS_DISCARD_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCAL_NET_ACCESS_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCAL_NET_BLOCKED_UID_MAP_PATH;
 import static android.net.BpfNetMapsConstants.LOCKDOWN_VPN_MATCH;
+import static android.net.BpfNetMapsConstants.LOCKDOWN_VPN_REGULAR_APP_MATCH;
 import static android.net.BpfNetMapsConstants.UID_OWNER_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_PERMISSION_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_RULES_CONFIGURATION_KEY;
@@ -54,6 +55,7 @@ import android.annotation.Nullable;
 import android.app.StatsManager;
 import android.content.Context;
 import android.net.BpfNetMapsUtils;
+import android.ext.ConnectivityUtil;
 import android.net.INetd;
 import android.net.UidOwnerValue;
 import android.os.Build;
@@ -147,6 +149,8 @@ public class BpfNetMaps {
             Pair.create(TRAFFIC_PERMISSION_UPDATE_DEVICE_STATS, "PERMISSION_UPDATE_DEVICE_STATS")
     );
     private final InterfaceTracker mInterfaceTracker;
+
+    private Context mContext;
 
     /**
      * Set configurationMap for test.
@@ -449,6 +453,7 @@ public class BpfNetMaps {
         mNetd = netd;
         mDeps = deps;
         mInterfaceTracker = interfaceTracker;
+        mContext = context;
     }
 
     private void maybeThrow(final int err, final String msg) {
@@ -822,8 +827,12 @@ public class BpfNetMaps {
 
         if (add) {
             addRule(uid, LOCKDOWN_VPN_MATCH, "updateUidLockdownRule");
+            if (!ConnectivityUtil.isSystem(mContext, uid)) {
+                addRule(uid, LOCKDOWN_VPN_REGULAR_APP_MATCH, "updateUidLockdownRule");
+            }
         } else {
             removeRule(uid, LOCKDOWN_VPN_MATCH, "updateUidLockdownRule");
+            removeRule(uid, LOCKDOWN_VPN_REGULAR_APP_MATCH, "updateUidLockdownRule");
         }
     }
 
