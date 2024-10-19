@@ -26,6 +26,7 @@ import android.annotation.RequiresPermission;
 import android.annotation.SuppressLint;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
+import android.app.compat.gms.GmsCompat;
 import android.bluetooth.BluetoothManager;
 import android.content.Context;
 import android.location.LocationManager;
@@ -219,6 +220,9 @@ public class NearbyManager {
             }
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        } catch (SecurityException e) {
+            GmsCompat.catchOrRethrow(e);
+            return ScanStatus.ERROR;
         }
     }
 
@@ -254,6 +258,8 @@ public class NearbyManager {
             }
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        } catch (SecurityException e) {
+            GmsCompat.catchOrRethrow(e);
         }
     }
 
@@ -508,6 +514,8 @@ public class NearbyManager {
             mService.setPoweredOffFindingEphemeralIds(ephemeralIdList);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        } catch (SecurityException e) {
+            GmsCompat.catchOrRethrow(e);
         }
 
     }
@@ -553,6 +561,8 @@ public class NearbyManager {
                     poweredOffFindingMode == POWERED_OFF_FINDING_MODE_ENABLED);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        } catch (SecurityException e) {
+            GmsCompat.catchOrRethrow(e);
         }
     }
 
@@ -576,6 +586,9 @@ public class NearbyManager {
                     ? POWERED_OFF_FINDING_MODE_ENABLED : POWERED_OFF_FINDING_MODE_DISABLED;
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
+        } catch (SecurityException e) {
+            GmsCompat.catchOrRethrow(e);
+            return POWERED_OFF_FINDING_MODE_DISABLED;
         }
     }
 
