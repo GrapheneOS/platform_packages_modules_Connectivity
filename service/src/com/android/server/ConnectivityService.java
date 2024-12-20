@@ -8824,6 +8824,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
         Objects.requireNonNull(score);
         Objects.requireNonNull(caps);
         Objects.requireNonNull(callback);
+        if (caps.hasTransport(TRANSPORT_TEST)) {
+            enforceAnyPermissionOf(mContext, Manifest.permission.MANAGE_TEST_NETWORKS);
+        } else {
+            enforceNetworkFactoryPermission();
+        }
         final boolean yieldToBadWiFi = caps.hasTransport(TRANSPORT_CELLULAR) && !avoidBadWifi();
         final NetworkOffer offer = new NetworkOffer(
                 FullScore.makeProspectiveScore(score, caps, yieldToBadWiFi),
