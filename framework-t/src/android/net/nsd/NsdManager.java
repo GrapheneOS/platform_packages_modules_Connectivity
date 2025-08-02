@@ -1273,6 +1273,18 @@ public final class NsdManager {
         synchronized (mMapLock) {
             int valueIndex = mListenerMap.indexOfValue(listener);
             if (valueIndex == -1) {
+                if (mService instanceof NsdServiceConnectorStub) {
+                    // There's a bug in com.sony.sonycast.sdk.ScMediaRouteProvider:
+                    // it calls NsdManager.stopServiceDiscovery() after service discovery fails,
+                    // which makes it hit the IllegalArgumentException below, see
+                    // https://discuss.grapheneos.org/d/24594-tidal-issue-after-update-to-2025073000/6
+                    // Service discovery always fails when NsdServiceConnectorStub is used.
+                    //
+                    // As a workaround, return an invalid listener key instead of throwing an
+                    // exception (listener keys are not used by NsdServiceConnectorStub)
+                    Log.d(TAG, "getListenerKey: returning invalid key instead of throwing IllegalArgumentException");
+                    return FIRST_LISTENER_KEY - 1;
+                }
                 throw new IllegalArgumentException("listener not registered");
             }
             return mListenerMap.keyAt(valueIndex);
