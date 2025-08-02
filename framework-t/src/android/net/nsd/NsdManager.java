@@ -704,42 +704,48 @@ public final class NsdManager {
     }
 
     private INsdServiceConnector createStubbedINsdServiceConnector() {
-        return new INsdServiceConnector() {
-            final NsdCallbackImpl callback = new NsdCallbackImpl(mHandler);
+        return new NsdServiceConnectorStub(mHandler);
+    }
 
-            @Override public void registerService(int listenerKey,
-                    AdvertisingRequest advertisingRequest) {
-                callback.onRegisterServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void unregisterService(int listenerKey) {
-                callback.onUnregisterServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void discoverServices(int listenerKey,
-                    DiscoveryRequest discoveryRequest) {
-                callback.onDiscoverServicesFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void stopDiscovery(int listenerKey) {
-                callback.onStopDiscoveryFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void resolveService(int listenerKey, NsdServiceInfo serviceInfo) {
-                callback.onResolveServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void startDaemon() {}
-            @Override public void stopResolution(int listenerKey) {
-                callback.onStopResolutionFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void registerServiceInfoCallback(int listenerKey,
-                    NsdServiceInfo serviceInfo) {
-                callback.onServiceInfoCallbackRegistrationFailed(listenerKey, FAILURE_INTERNAL_ERROR);
-            }
-            @Override public void unregisterServiceInfoCallback(int listenerKey) {
-                callback.onServiceInfoCallbackUnregistered(listenerKey);
-            }
-            @Override public void registerOffloadEngine(String ifaceName, IOffloadEngine cb,
-                    long offloadCapabilities, long offloadType) {}
-            @Override public void unregisterOffloadEngine(IOffloadEngine cb) {}
-            @Override public android.os.IBinder asBinder() { return null; }
-        };
+    static class NsdServiceConnectorStub implements INsdServiceConnector {
+        final NsdCallbackImpl callback;
+
+        private NsdServiceConnectorStub(Handler handler) {
+            callback = new NsdCallbackImpl(handler);
+        }
+
+        @Override public void registerService(int listenerKey,
+                AdvertisingRequest advertisingRequest) {
+            callback.onRegisterServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void unregisterService(int listenerKey) {
+            callback.onUnregisterServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void discoverServices(int listenerKey,
+                DiscoveryRequest discoveryRequest) {
+            callback.onDiscoverServicesFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void stopDiscovery(int listenerKey) {
+            callback.onStopDiscoveryFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void resolveService(int listenerKey, NsdServiceInfo serviceInfo) {
+            callback.onResolveServiceFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void startDaemon() {}
+        @Override public void stopResolution(int listenerKey) {
+            callback.onStopResolutionFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void registerServiceInfoCallback(int listenerKey,
+                NsdServiceInfo serviceInfo) {
+            callback.onServiceInfoCallbackRegistrationFailed(listenerKey, FAILURE_INTERNAL_ERROR);
+        }
+        @Override public void unregisterServiceInfoCallback(int listenerKey) {
+            callback.onServiceInfoCallbackUnregistered(listenerKey);
+        }
+        @Override public void registerOffloadEngine(String ifaceName, IOffloadEngine cb,
+                long offloadCapabilities, long offloadType) {}
+        @Override public void unregisterOffloadEngine(IOffloadEngine cb) {}
+        @Override public android.os.IBinder asBinder() { return null; }
     }
 
     /**
