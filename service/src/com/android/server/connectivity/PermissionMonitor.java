@@ -483,6 +483,11 @@ public class PermissionMonitor {
         final Handler handler = new Handler(mThread.getLooper());
         final Context userAllContext = mContext.createContextAsUser(UserHandle.ALL, 0 /* flags */);
 
+        mPackageManager.addOnPermissionsChangeListener(uid -> {
+            // traffic permissions are INTERNET and UPDATE_DEVICE_STATS
+            handler.post(() -> sendPackagePermissionsForUid(uid, getTrafficPermissionForUid(uid)));
+        });
+
         if (!mUseBroadcastReceiveHelper) {
             final IntentFilter intentFilter = new IntentFilter();
             intentFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -491,12 +496,7 @@ public class PermissionMonitor {
             userAllContext.registerReceiver(
                     mIntentReceiver, intentFilter, null /* broadcastPermission */, handler);
 
-            mPackageManager.addOnPermissionsChangeListener(uid -> {
-            // traffic permissions are INTERNET and UPDATE_DEVICE_STATS
-            handler.post(() -> sendPackagePermissionsForUid(uid, getTrafficPermissionForUid(uid)));
-        });
-
-        // Listen to EXTERNAL_APPLICATIONS_AVAILABLE is that an app becoming// available means it may need to gain a permission. But an app that
+            // Listen to EXTERNAL_APPLICATIONS_AVAILABLE is that an app becoming// available means it may need to gain a permission. But an app that
             // becomes unavailable can neither gain nor lose permissions on that
             // account, it just can no longer run. Thus, doesn't need to listen to
             // EXTERNAL_APPLICATIONS_UNAVAILABLE.
