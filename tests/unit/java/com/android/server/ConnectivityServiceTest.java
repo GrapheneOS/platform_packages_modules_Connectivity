@@ -504,7 +504,7 @@ import java.util.stream.Collectors;
  * Tests for {@link ConnectivityService}.
  *
  * Build, install and run with:
- *  runtest frameworks-net -c com.android.server.ConnectivityServiceTest
+ *  atest -c ConnectivityCoverageTests:android.net.connectivity.com.android.server.ConnectivityServiceTest
  */
 // TODO : move methods from this test to smaller tests in the 'connectivityservice' directory
 // to enable faster testing of smaller groups of functionality.
