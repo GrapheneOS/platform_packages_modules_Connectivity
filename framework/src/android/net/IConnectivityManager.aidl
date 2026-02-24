@@ -133,7 +133,7 @@ interface IConnectivityManager
 
     ProxyInfo getProxyForNetwork(in Network nework);
 
-    void setRequireVpnForUids(boolean requireVpn, in UidRange[] ranges);
+    void setRequireVpnForUids(boolean requireVpn, in UidRange[] ranges, in UidRange[] strictRanges);
     void setLegacyLockdownVpnEnabled(boolean enabled);
 
     void setProvisioningNotificationVisible(boolean visible, int networkType, in String action);
