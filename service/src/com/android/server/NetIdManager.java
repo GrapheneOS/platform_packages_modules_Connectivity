@@ -68,7 +68,11 @@ public class NetIdManager {
             int lastId, @NonNull SparseBooleanArray netIdInUse) {
         int netId = lastId;
         for (int i = MIN_NET_ID; i <= mMaxNetId; i++) {
-            netId = netId < mMaxNetId ? netId + 1 : MIN_NET_ID;
+            if (netId < mMaxNetId) {
+                netId += 1;
+            } else {
+                break;
+            }
             if (!netIdInUse.get(netId)) {
                 return netId;
             }
