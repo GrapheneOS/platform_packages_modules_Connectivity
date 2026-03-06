@@ -8072,6 +8072,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             } catch (RemoteException | ServiceSpecificException e) {
                 Log.e(TAG, "setRequireVpnForUids(" + requireVpn + ", "
                         + Arrays.toString(strictRanges) + "): netd command failed: " + e);
+                throw new IllegalStateException("lockdown VPN firewall in invalid state");
             }
         }
 
