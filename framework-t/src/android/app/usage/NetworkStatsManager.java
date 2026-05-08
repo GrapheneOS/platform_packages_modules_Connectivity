@@ -31,6 +31,7 @@ import android.annotation.RequiresPermission;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
 import android.annotation.WorkerThread;
+import android.app.compat.gms.GmsCompat;
 import android.app.usage.NetworkStats.Bucket;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
@@ -593,8 +594,19 @@ public class NetworkStatsManager {
     @WorkerThread
     public NetworkStats queryDetailsForUidTag(int networkType, @Nullable String subscriberId,
             long startTime, long endTime, int uid, int tag) throws SecurityException {
-        return queryDetailsForUidTagState(networkType, subscriberId, startTime, endTime, uid,
-            tag, NetworkStats.Bucket.STATE_ALL);
+        try {
+            return queryDetailsForUidTagState(networkType, subscriberId, startTime, endTime, uid,
+                tag, NetworkStats.Bucket.STATE_ALL);
+        } catch (SecurityException e) {
+            if (GmsCompat.isEnabled()) {
+                // GmsCore null-checks the return value despite the method being marked as non-null.
+                // An alternative to returning null is to make a stub instance of NetworkStats, but
+                // it's complex because of the way NetworkStats is implemented.
+                //noinspection DataFlowIssue
+                return null;
+            }
+            throw e;
+        }
     }
 
     /**
