@@ -466,6 +466,10 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import android.content.pm.ApplicationInfo;
+import android.content.pm.GosPackageStateFlag;
+import android.ext.settings.app.VpnDisguiseGetter;
+
 /**
  * @hide
  */
@@ -2690,6 +2694,41 @@ public class ConnectivityService extends IConnectivityManager.Stub
     }
 
     /**
+     * Disguise VPN even if it's active
+     */
+    private boolean shouldDisguiseActiveVpn(int uid) {
+	final PackageManager pm = mContext.getPackageManager();
+	int userId = UserHandle.getUserHandleForUid(uid).getIdentifier();
+	for (String pkg : pm.getPackagesForUid(uid)) {
+	    if (VpnDisguiseGetter.getVpnDisguiseSettingForPackage(mContext, userId, pkg)) {
+		return true;
+	    }
+	}
+	return false;
+    }
+
+    private void maybeDisguiseVpn(@NonNull NetworkCapabilities nc, int uid) {
+	if (shouldDisguiseActiveVpn(uid) && nc.hasTransport(TRANSPORT_VPN)) {
+	    nc.setTransportTypes(new int[]{nc.isMetered() ? TRANSPORT_CELLULAR : TRANSPORT_WIFI});
+	    nc.addCapability(NET_CAPABILITY_NOT_VPN);
+	    nc.setTransportInfo(null);
+	}
+    }
+
+    private boolean satisfies(NetworkAgentInfo nai, NetworkRequest request, int uid, boolean immutable) {
+	if (!nai.everConnected()) {
+	    return false;
+	}
+	NetworkCapabilities newNc = new NetworkCapabilities(nai.networkCapabilities);
+	maybeDisguiseVpn(newNc, uid);
+	if (immutable) {
+	    return request.networkCapabilities.satisfiedByImmutableNetworkCapabilities(newNc);
+	} else {
+	    return request.networkCapabilities.satisfiedByNetworkCapabilities(newNc);
+	}
+    }
+
+    /**
      * Apply any relevant filters to the specified {@link NetworkInfo} for the given UID. For
      * example, this may mark the network as {@link DetailedState#BLOCKED} based
      * on {@link #isNetworkWithCapabilitiesBlocked}.
@@ -2701,6 +2740,11 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // Many legacy types (e.g,. TYPE_MOBILE_HIPRI) are not actually a property of the network
         // but only exists if an app asks about them or requests them. Ensure the requesting app
         // gets the type it asks for.
+        if (shouldDisguiseActiveVpn(uid)) {
+            if (type == ConnectivityManager.TYPE_VPN) {
+                type = nc.isMetered() ? ConnectivityManager.TYPE_MOBILE : ConnectivityManager.TYPE_WIFI;
+            }
+        }
         filtered.setType(type);
         if (isNetworkWithCapabilitiesBlocked(nc, uid, ignoreBlocked)) {
             filtered.setDetailedState(DetailedState.BLOCKED, null /* reason */,
@@ -2861,6 +2905,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
         if (isNetworkWithCapabilitiesBlocked(nai.networkCapabilities, uid, false)) {
             return null;
         }
+
+        if (nai.networkCapabilities.hasTransport(TRANSPORT_VPN)) {
+            if (shouldDisguiseActiveVpn(uid) || !nai.networkCapabilities.appliesToUid(uid)) {
+                return null;
+            }
+        }
         return nai.network;
     }
 
@@ -2870,9 +2920,19 @@ public class ConnectivityService extends IConnectivityManager.Stub
         enforceAccessPermission();
         synchronized (mNetworkForNetId) {
             final Network[] result = new Network[mNetworkForNetId.size()];
+            final Network activeNetwork = getActiveNetworkForUidInternal(mDeps.getCallingUid(), false);
+            int j = 0;
             for (int i = 0; i < mNetworkForNetId.size(); i++) {
-                result[i] = mNetworkForNetId.valueAt(i).network;
+                // Skip VPNs that are none of callers business
+                if (activeNetwork != mNetworkForNetId.valueAt(i).network) {
+                    NetworkAgentInfo nai = getNetworkAgentInfoForNetwork(mNetworkForNetId.valueAt(i).network);
+                    if (nai != null && nai.networkCapabilities.hasTransport(TRANSPORT_VPN))
+                        continue;
+                }
+                result[j++] = mNetworkForNetId.valueAt(i).network;
             }
+            if (j != mNetworkForNetId.size())
+                return Arrays.copyOf(result, j);
             return result;
         }
     }
@@ -3360,6 +3420,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // bringing up the VPN, but this should not apply to some very privileged apps like settings
         if (callingUid != nc.getOwnerUid()) {
             newNc.setOwnerUid(INVALID_UID);
+	    maybeDisguiseVpn(newNc, callingUid);
             return newNc;
         }
         // Allow VPNs to see ownership of their own VPN networks - not location sensitive.
@@ -3396,7 +3457,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // Only do a permission check if sanitization is needed, to avoid unnecessary binder calls.
         final boolean needsSanitization =
                 (lp.getCaptivePortalApiUrl() != null || lp.getCaptivePortalData() != null);
-        if (!needsSanitization) {
+        if (!needsSanitization && !shouldDisguiseActiveVpn(callerUid)) {
             return new LinkProperties(lp);
         }
 
@@ -3409,6 +3470,10 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // object gets parceled.
         newLp.setCaptivePortalApiUrl(null);
         newLp.setCaptivePortalData(null);
+
+	if (shouldDisguiseActiveVpn(callerUid) && newLp.getInterfaceName().startsWith("tun")) {
+	    newLp.setInterfaceName("");
+	}
         return newLp;
     }
 
@@ -3417,19 +3482,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // There is no need to track the effective UID of the request here. If the caller
         // lacks the settings permission, the effective UID is the same as the calling ID.
         if (!hasSettingsPermission()) {
-            // Unprivileged apps can only pass in null or their own UID.
-            if (nc.getUids() == null) {
-                // If the caller passes in null, the callback will also match networks that do not
-                // apply to its UID, similarly to what it would see if it called getAllNetworks.
-                // In this case, redact everything in the request immediately. This ensures that the
-                // app is not able to get any redacted information by filing an unredacted request
-                // and observing whether the request matches something.
-                if (nc.getNetworkSpecifier() != null) {
-                    nc.setNetworkSpecifier(nc.getNetworkSpecifier().redact());
-                }
-            } else {
-                nc.setSingleUid(callerUid);
-            }
+            // Unprivileged apps can only pass in their own UID.
+	    nc.setSingleUid(callerUid);
         }
         nc.setRequestorUidAndPackageName(callerUid, callerPackageName);
         nc.setAdministratorUids(new int[0]);
@@ -3511,7 +3565,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
         final ArrayList<NetworkStateSnapshot> result = new ArrayList<>();
         for (Network network : getAllNetworks()) {
             final NetworkAgentInfo nai = getNetworkAgentInfoForNetwork(network);
-            final boolean includeNetwork = (nai != null) && nai.isCreated();
+	    final int callerUid = Binder.getCallingUid();
+            final boolean includeNetwork = (nai != null) && nai.isCreated() && (!nai.networkCapabilities.hasTransport(TRANSPORT_VPN) || nai.networkCapabilities.appliesToUid(callerUid));
             if (includeNetwork) {
                 // TODO (b/73321673) : NetworkStateSnapshot contains a copy of the
                 // NetworkCapabilities, which may contain UIDs of apps to which the
@@ -6265,7 +6320,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 if (req.isListen()) {
                     forEachNetworkAgentInfo(network -> {
                         if (req.networkCapabilities.hasSignalStrength()
-                                && network.satisfiesImmutableCapabilitiesOf(req)) {
+			    && satisfies(network, req, nri.mUid, true)) {
                             updateSignalStrengthThresholds(network, "REGISTER", req);
                         }
                     });
@@ -6393,7 +6448,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
 
             // The network can never be a potential satisfier for the request because it does not
             // satisfy it. Later requests in the list might.
-            if (!candidate.satisfies(req)) continue;
+            if (!satisfies(candidate, req, nri.mUid, false)) continue;
 
             // This request could cause the network to be kept up if and only if it could become the
             // best network for the request by validating.
@@ -9010,7 +9065,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             for (final NetworkRequestInfo nri : mNetworkRequests.values()) {
                 for (final NetworkRequest req : nri.mRequests) {
                     if (req.networkCapabilities.hasSignalStrength()
-                            && nai.satisfiesImmutableCapabilitiesOf(req)) {
+			&& satisfies(nai, req, nri.mUid, true)) {
                         thresholds.add(req.networkCapabilities.getSignalStrength());
                     }
                 }
@@ -11871,7 +11926,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         // TODO: check if defensive copies of data is needed.
         putParcelable(bundle, nri.getNetworkRequestForCallback());
         if (network != null) {
-            putParcelable(bundle, network);
+	    putParcelable(bundle, network);
         }
         return bundle;
     }
@@ -12257,7 +12312,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             }
             final NetworkRequest nr = nri.mRequests.get(0);
             if (!nr.isListen()) continue;
-            if (nai.isSatisfyingRequest(nr.requestId) && !nai.satisfies(nr)) {
+            if (nai.isSatisfyingRequest(nr.requestId) && !satisfies(nai, nr, nri.mUid, false)) {
                 nai.removeRequest(nr.requestId);
                 callCallbackForRequest(nri, nai, CALLBACK_LOST, 0);
             }
@@ -12271,7 +12326,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             }
             final NetworkRequest nr = nri.mRequests.get(0);
             if (!nr.isListen()) continue;
-            if (nai.satisfies(nr) && !nai.isSatisfyingRequest(nr.requestId)) {
+            if (satisfies(nai, nr, nri.mUid, false) && !nai.isSatisfyingRequest(nr.requestId)) {
                 nai.addRequest(nr);
                 notifyNetworkAvailable(nai, nri);
             }
@@ -14019,7 +14074,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             for (int i = 0; i < mNetworkForNetId.size(); i++) {
                 final NetworkAgentInfo nai = mNetworkForNetId.valueAt(i);
                 // Connectivity Diagnostics rejects multilayer requests at registration hence get(0)
-                if (nai.satisfies(nri.mRequests.get(0))) {
+                if (satisfies(nai, nri.mRequests.get(0), nri.mUid, false)) {
                     matchingNetworks.add(nai);
                 }
             }
@@ -14180,7 +14235,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
             final NetworkRequestInfo nri = cbInfo.mRequestInfo;
 
             // Connectivity Diagnostics rejects multilayer requests at registration hence get(0).
-            if (!nai.satisfies(nri.mRequests.get(0))) {
+            if (!satisfies(nai, nri.mRequests.get(0), nri.mUid, false)) {
                 continue;
             }
 

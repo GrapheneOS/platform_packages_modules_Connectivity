@@ -169,6 +169,7 @@ java_library {
     name: "service-connectivity-pre-jarjar",
     sdk_version: "system_server_current",
     min_sdk_version: "30",
+    platform_apis: true,
     // NetworkStackApiShimSettingsForCurrentBranch provides the latest available shims depending on
     // the branch to "service-connectivity".
     // There are Tethering.apk and TetheringNext.apk variants for the tethering APEX,
