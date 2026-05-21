@@ -7451,9 +7451,12 @@ public class ConnectivityService extends IConnectivityManager.Stub
                 case EVENT_BLOCKED_REASONS_CHANGED:
                     handleBlockedReasonsChanged((List) msg.obj);
                     break;
-                case EVENT_SET_REQUIRE_VPN_FOR_UIDS:
-                    handleSetRequireVpnForUids(toBool(msg.arg1), (UidRange[]) msg.obj);
+                case EVENT_SET_REQUIRE_VPN_FOR_UIDS: {
+                    final Pair<UidRange[], UidRange[]> arg =
+                            (Pair<UidRange[], UidRange[]>) msg.obj;
+                    handleSetRequireVpnForUids(toBool(msg.arg1), arg.first, arg.second);
                     break;
+                }
                 case EVENT_SET_OEM_NETWORK_PREFERENCE: {
                     final Pair<OemNetworkPreferences, IOnCompleteListener> arg =
                             (Pair<OemNetworkPreferences, IOnCompleteListener>) msg.obj;
@@ -8043,45 +8046,56 @@ public class ConnectivityService extends IConnectivityManager.Stub
     }
 
     @Override
-    public void setRequireVpnForUids(boolean requireVpn, UidRange[] ranges) {
+    public void setRequireVpnForUids(boolean requireVpn, UidRange[] ranges,
+            UidRange[] strictRanges) {
         enforceNetworkStackOrSettingsPermission();
         mHandler.sendMessage(mHandler.obtainMessage(EVENT_SET_REQUIRE_VPN_FOR_UIDS,
-                encodeBool(requireVpn), 0 /* arg2 */, ranges));
+                encodeBool(requireVpn), 0 /* arg2 */, new Pair<>(ranges, strictRanges)));
     }
 
-    private void handleSetRequireVpnForUids(boolean requireVpn, UidRange[] ranges) {
+    private void handleSetRequireVpnForUids(boolean requireVpn, UidRange[] ranges,
+            UidRange[] strictRanges) {
         if (DBG) {
             Log.d(TAG, "Setting VPN " + (requireVpn ? "" : "not ") + "required for UIDs: "
-                    + Arrays.toString(ranges));
+                    + Arrays.toString(ranges) + ", and strict UIDs: " + Arrays.toString(
+                            strictRanges));
         }
-        // Cannot use a Set since the list of UID ranges might contain duplicates.
-        final List<UidRange> newVpnBlockedUidRanges = new ArrayList(mVpnBlockedUidRanges);
-        for (int i = 0; i < ranges.length; i++) {
-            if (requireVpn) {
-                newVpnBlockedUidRanges.add(ranges[i]);
-            } else {
-                newVpnBlockedUidRanges.remove(ranges[i]);
+
+        // Keep calling conditions consistent with AOSP. This was originally checked by caller.
+        if (strictRanges.length > 0) {
+            try {
+                mNetd.networkRejectNonSecureVpn(requireVpn, toUidRangeStableParcels(strictRanges));
+            } catch (RemoteException | ServiceSpecificException e) {
+                Log.e(TAG, "setRequireVpnForUids(" + requireVpn + ", "
+                        + Arrays.toString(strictRanges) + "): netd command failed: " + e);
+                throw new IllegalStateException("lockdown VPN firewall in invalid state");
             }
         }
 
-        try {
-            mNetd.networkRejectNonSecureVpn(requireVpn, toUidRangeStableParcels(ranges));
-        } catch (RemoteException | ServiceSpecificException e) {
-            Log.e(TAG, "setRequireVpnForUids(" + requireVpn + ", "
-                    + Arrays.toString(ranges) + "): netd command failed: " + e);
+        // Keep calling conditions consistent with AOSP. This was originally checked by caller.
+        if (ranges.length > 0) {
+            // Cannot use a Set since the list of UID ranges might contain duplicates.
+            final List<UidRange> newVpnBlockedUidRanges = new ArrayList(mVpnBlockedUidRanges);
+            for (int i = 0; i < ranges.length; i++) {
+                if (requireVpn) {
+                    newVpnBlockedUidRanges.add(ranges[i]);
+                } else {
+                    newVpnBlockedUidRanges.remove(ranges[i]);
+                }
+            }
+
+            if (mDeps.isAtLeastT()) {
+                mPermissionMonitor.updateVpnLockdownUidRanges(requireVpn, ranges);
+            }
+
+            forEachNetworkAgentInfo(nai -> {
+                final boolean curMetered = nai.networkCapabilities.isMetered();
+                maybeNotifyNetworkBlocked(nai, curMetered, curMetered,
+                        mVpnBlockedUidRanges, newVpnBlockedUidRanges);
+            });
+
+            mVpnBlockedUidRanges = newVpnBlockedUidRanges;
         }
-
-        if (mDeps.isAtLeastT()) {
-            mPermissionMonitor.updateVpnLockdownUidRanges(requireVpn, ranges);
-        }
-
-        forEachNetworkAgentInfo(nai -> {
-            final boolean curMetered = nai.networkCapabilities.isMetered();
-            maybeNotifyNetworkBlocked(nai, curMetered, curMetered,
-                    mVpnBlockedUidRanges, newVpnBlockedUidRanges);
-        });
-
-        mVpnBlockedUidRanges = newVpnBlockedUidRanges;
     }
 
     @Override

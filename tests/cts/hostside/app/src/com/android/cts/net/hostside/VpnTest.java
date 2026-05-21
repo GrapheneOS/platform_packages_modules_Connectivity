@@ -1876,7 +1876,7 @@ public class VpnTest {
 
             // Lockdown uid that has the remote UDP socket
             runWithShellPermissionIdentity(() -> {
-                mCM.setRequireVpnForUids(true /* requireVpn */, lockdownRange);
+                mCM.setRequireVpnForUids2(true /* requireVpn */, lockdownRange, lockdownRange);
             }, NETWORK_SETTINGS);
 
             // setRequireVpnForUids setup a lockdown rule asynchronously. So it needs to wait for
@@ -1907,7 +1907,7 @@ public class VpnTest {
                 Os.close(remoteUdpFd);
             }, /* cleanup */ () -> {
                 runWithShellPermissionIdentity(() -> {
-                    mCM.setRequireVpnForUids(false /* requireVpn */, lockdownRange);
+                    mCM.setRequireVpnForUids2(false /* requireVpn */, lockdownRange, lockdownRange);
                 }, NETWORK_SETTINGS);
             });
     }
