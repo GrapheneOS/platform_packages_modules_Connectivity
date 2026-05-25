@@ -1595,6 +1595,22 @@ public class ConnectivityManager {
     }
 
     /**
+     * @hide
+     */
+    @RequiresPermission(anyOf = {
+            NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK,
+            android.Manifest.permission.NETWORK_STACK,
+            android.Manifest.permission.NETWORK_SETTINGS})
+    @SystemApi(client = MODULE_LIBRARIES)
+    public void setRequireVpnForUids(boolean requireVpn,
+            @NonNull Collection<Range<Integer>> ranges) {
+        // All existing known calls to this have been removed. Any new or unknown calls will have
+        // ranges set to a value that can result in leaks, so it's an illegal argument.
+        throw new IllegalArgumentException(
+                "ranges is not strict, call setRequireVpnForUids2 instead");
+    }
+
+    /**
      * Adds or removes a requirement for given UID ranges to use the VPN.
      *
      * If set to {@code true}, informs the system that the UIDs in the specified ranges must not
@@ -1622,6 +1638,8 @@ public class ConnectivityManager {
      * This method should be called only by the VPN code.
      *
      * @param ranges the UID ranges to restrict
+     * @param strictRanges the UID ranges to restrict, which include the VPN app itself (when not
+     *                     using the legacy VPN)
      * @param requireVpn whether the specified UID ranges must use a VPN
      *
      * @hide
@@ -1631,16 +1649,19 @@ public class ConnectivityManager {
             android.Manifest.permission.NETWORK_STACK,
             android.Manifest.permission.NETWORK_SETTINGS})
     @SystemApi(client = MODULE_LIBRARIES)
-    public void setRequireVpnForUids(boolean requireVpn,
-            @NonNull Collection<Range<Integer>> ranges) {
+    public void setRequireVpnForUids2(boolean requireVpn,
+            @NonNull Collection<Range<Integer>> ranges,
+            @NonNull Collection<Range<Integer>> strictRanges) {
         Objects.requireNonNull(ranges);
+        Objects.requireNonNull(strictRanges);
         // The Range class is not parcelable. Convert to UidRange, which is what is used internally.
         // This method is not necessarily expected to be used outside the system server, so
         // parceling may not be necessary, but it could be used out-of-process, e.g., by the network
         // stack process, or by tests.
         final UidRange[] rangesArray = getUidRangeArray(ranges);
+        final UidRange[] strictRangesArray = getUidRangeArray(strictRanges);
         try {
-            mService.setRequireVpnForUids(requireVpn, rangesArray);
+            mService.setRequireVpnForUids(requireVpn, rangesArray, strictRangesArray);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
