@@ -87,6 +87,9 @@ public class SignatureVerifier {
 
     LogListUpdateStatus setPublicKeyFrom(Uri file) {
         try (InputStream fileStream = mContext.getContentResolver().openInputStream(file)) {
+            if (fileStream == null) {
+                throw new IOException("fileStream is null");
+            }
             return setPublicKey(new String(fileStream.readAllBytes()));
         } catch (IOException e) {
             Log.e(TAG, "Could not read the public key file", e);
