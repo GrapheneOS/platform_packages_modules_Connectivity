@@ -22,6 +22,8 @@ import android.content.pm.PackageManager;
 import android.net.thread.ThreadNetworkManager;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.DeviceConfigUtils;
 import com.android.net.module.util.ModuleFlagProvider;
@@ -129,12 +131,18 @@ public final class ConnectivityServiceInitializer extends SystemService {
             mThreadNetworkService.onBootPhase(phase);
         }
 
-        if (SdkLevel.isAtLeastV() && mCertificateTransparencyService != null) {
-            mCertificateTransparencyService.onBootPhase(phase);
-        }
-
         if (mConnectivityServiceInitializerB != null) {
             mConnectivityServiceInitializerB.onBootPhase(phase);
+        }
+    }
+
+    @Override
+    public void onUserUnlocked(@NonNull TargetUser user) {
+        if (user.getUserHandle().isSystem()) {
+            if (SdkLevel.isAtLeastV() && mCertificateTransparencyService != null) {
+                // CertificateTransparencyService needs DownloadProvider, which isn't available BFU
+                mCertificateTransparencyService.onSystemUserUnlocked();
+            }
         }
     }
 

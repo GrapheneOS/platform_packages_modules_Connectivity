@@ -15,18 +15,38 @@
  */
 package com.android.server.net.ct;
 
+import android.content.Context;
+import android.ext.settings.CertTransparencyDownloaderSetting;
+import android.util.Log;
+
+import static android.ext.settings.CertTransparencyDownloaderSetting.VAL_STANDARD;
+
 /** Class holding the constants used by the CT feature. */
 final class Config {
 
     static final String TAG = "CertificateTransparency";
-    static final boolean DEBUG = false;
+    static final boolean DEBUG = Log.isLoggable(TAG, Log.DEBUG);
 
     public static final String INSTALL_COMPLETE_ACTION = "android.intent.action.INSTALL_COMPLETE";
 
     // CT paths
     static final String CT_ROOT_DIRECTORY_PATH = "/data/misc/keychain/ct/";
-    static final String URL_PREFIX = "https://www.gstatic.com/android/certificate_transparency/";
-    static final String URL_PUBLIC_KEY = URL_PREFIX + "log_list.pub";
+
+    static String baseUrl(Context ctx) {
+        if (CertTransparencyDownloaderSetting.SETTING.get(ctx) == VAL_STANDARD) {
+            return "https://www.gstatic.com/android/certificate_transparency/";
+        }
+        // VAL_OFF is handled separately
+        return "https://gstatic.grapheneos.org/android/certificate_transparency/";
+    }
+
+    static String getCommonBaseUrlPart() {
+        return "/android/certificate_transparency/";
+    }
+
+    static String publicKeyUrl(Context ctx) {
+        return baseUrl(ctx) + "log_list.pub";
+    }
 
     // Phenotype flags
     static final String NAMESPACE_NETWORK_SECURITY = "network_security";
@@ -40,13 +60,27 @@ final class Config {
 
     // Compatibility Version v2
     static final String COMPATIBILITY_VERSION_V2 = "v2";
-    static final String URL_PREFIX_V2 = URL_PREFIX + COMPATIBILITY_VERSION_V2 + "/";
-    static final String URL_LOG_LIST_V2 = URL_PREFIX_V2 + "log_list.json";
-    static final String URL_SIGNATURE_V2 = URL_PREFIX_V2 + "log_list.sig";
+
+    static String logListV2Url(Context ctx) {
+        return subUrl(ctx, "v2/log_list.json");
+    }
+
+    static String signatureV2Url(Context ctx) {
+        return subUrl(ctx, "v2/log_list.sig");
+    }
 
     // Compatibility Version v3
     static final String COMPATIBILITY_VERSION_V3 = "v3";
-    static final String URL_PREFIX_V3 = URL_PREFIX + COMPATIBILITY_VERSION_V3 + "/";
-    static final String URL_LOG_LIST_V3 = URL_PREFIX_V3 + "log_list.ctfb";
-    static final String URL_SIGNATURE_V3 = URL_PREFIX_V3 + "log_list.sig";
+
+    static String logListV3Url(Context ctx) {
+        return subUrl(ctx, "v3/log_list.ctfb");
+    }
+
+    static String signatureV3Url(Context ctx) {
+        return subUrl(ctx, "v3/log_list.sig");
+    }
+
+    private static String subUrl(Context ctx, String suffix) {
+        return baseUrl(ctx) + suffix;
+    }
 }

@@ -75,43 +75,28 @@ public class CertificateTransparencyJob extends BroadcastReceiver {
     }
 
     void schedule() {
-        if (!mScheduled) {
-            mContext.registerReceiver(
-                    this,
-                    mUpdateLogsIntentFilter,
-                    Context.RECEIVER_EXPORTED);
-            mAlarmManager.setInexactRepeating(
-                    AlarmManager.ELAPSED_REALTIME,
-                    SystemClock
-                            .elapsedRealtime(), // schedule first job at earliest convenient time.
-                    AlarmManager.INTERVAL_DAY,
-                    mPendingIntent);
-        }
-        mScheduled = true;
-
-        if (Config.DEBUG) {
-            Log.d(TAG, "CertificateTransparencyJob scheduled.");
-        }
-    }
-
-    void cancel() {
-        if (mScheduled) {
-            mAlarmManager.cancel(mPendingIntent);
-            mContext.unregisterReceiver(this);
-        }
-        mScheduled = false;
-
-        if (mDependenciesReady) {
-            stopDependencies();
-        }
-        mDependenciesReady = false;
-
-        for (CompatibilityVersion compatVersion : mCompatVersions) {
-            compatVersion.delete();
-        }
-
-        if (Config.DEBUG) {
-            Log.d(TAG, "CertificateTransparencyJob canceled.");
+        synchronized (this) {
+            if (!mScheduled) {
+                mCertificateTransparencyDownloader.checkDownloadRequests();
+                mContext.registerReceiver(
+                        this,
+                        mUpdateLogsIntentFilter,
+                        Context.RECEIVER_EXPORTED);
+                mAlarmManager.setInexactRepeating(
+                        AlarmManager.ELAPSED_REALTIME,
+                        SystemClock
+                                .elapsedRealtime(), // schedule first job at earliest convenient time.
+                        AlarmManager.INTERVAL_DAY,
+                        mPendingIntent);
+                mScheduled = true;
+                if (Config.DEBUG) {
+                    Log.d(TAG, "CertificateTransparencyJob scheduled.");
+                }
+            } else {
+                if (Config.DEBUG) {
+                    Log.d(TAG, "CertificateTransparencyJob is already scheduled.");
+                }
+            }
         }
     }
 

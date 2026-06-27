@@ -22,6 +22,7 @@ import android.app.DownloadManager.Query;
 import android.app.DownloadManager.Request;
 import android.content.Context;
 import android.database.Cursor;
+import android.ext.settings.CertTransparencyDownloaderSetting;
 import android.net.Uri;
 import android.util.Log;
 
@@ -29,6 +30,7 @@ import androidx.annotation.VisibleForTesting;
 
 import com.google.auto.value.AutoValue;
 
+import java.util.ArrayList;
 import java.util.Objects;
 
 /** Class to handle downloads for Certificate Transparency. */
@@ -43,6 +45,58 @@ public class DownloadHelper {
 
     DownloadHelper(Context context) {
         this(context.getSystemService(DownloadManager.class));
+    }
+
+    void checkDownloadRequests(Context context) {
+        Log.d(TAG, "checkDownloadRequests");
+
+        try (Cursor cursor = mDownloadManager.query(new Query())) {
+            if (cursor == null) {
+                Log.d(TAG, "cursor is null");
+                return;
+            }
+            Log.d(TAG, "cursor row count: " + cursor.getCount());
+
+            int idCol = cursor.getColumnIndex(DownloadManager.COLUMN_ID);
+            int uriCol = cursor.getColumnIndex(DownloadManager.COLUMN_URI);
+            int statusCol = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+
+            var downloadsToRemove = new ArrayList<Long>(); // android.util.LongArray is unavailable here
+
+            String currentBaseUrl = Config.baseUrl(context);
+            int setting = CertTransparencyDownloaderSetting.SETTING.get(context);
+            Log.d(TAG, "current base URL: " + currentBaseUrl + " setting value: " + setting);
+
+            String commonBaseUrlPart = Config.getCommonBaseUrlPart();
+
+            while (cursor.moveToNext()) {
+                String url = cursor.getString(uriCol);
+                int status = cursor.getInt(statusCol);
+                Log.d(TAG, "checking url " + url + " status: " + status);
+                if (url == null) {
+                    continue;
+                }
+                if (!url.contains(commonBaseUrlPart)) {
+                    // this URL wasn't enqueued by CertificateTransparencyDownloader
+                    continue;
+                }
+                if (setting == CertTransparencyDownloaderSetting.VAL_OFF || !url.startsWith(currentBaseUrl)) {
+                    long id = cursor.getLong(idCol);
+                    downloadsToRemove.add(Long.valueOf(id));
+                }
+            }
+
+            int numIds = downloadsToRemove.size();
+            if (numIds > 0) {
+                long[] idsArray = downloadsToRemove.stream().mapToLong(Long::longValue).toArray();
+                int numRemoved = mDownloadManager.remove(idsArray);
+                if (numRemoved != numIds) {
+                    Log.e(TAG, "numRemoved (" + numRemoved + ") != numIds (" + numIds + ")");
+                } else {
+                    Log.d(TAG, "removed downloads count: " + numIds);
+                }
+            }
+        }
     }
 
     /**

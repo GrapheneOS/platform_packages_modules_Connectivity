@@ -16,6 +16,7 @@
 
 package com.android.server.net.ct;
 
+import static android.ext.settings.CertTransparencyDownloaderSetting.VAL_OFF;
 import static com.android.server.net.ct.Config.TAG;
 
 import android.annotation.RequiresApi;
@@ -24,12 +25,14 @@ import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.ext.settings.CertTransparencyDownloaderSetting;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.VisibleForTesting;
 
+import com.android.modules.utils.BackgroundThread;
 import com.android.server.net.ct.CertificateTransparencyLogger.CTLogListUpdateState;
 import com.android.server.net.ct.DownloadHelper.DownloadStatus;
 
@@ -45,6 +48,7 @@ class CertificateTransparencyDownloader extends BroadcastReceiver {
 
     private static final Intent INSTALL_COMPLETE = new Intent(Config.INSTALL_COMPLETE_ACTION);
 
+    private final Context mContext;
     private final DownloadHelper mDownloadHelper;
     private final SignatureVerifier mSignatureVerifier;
     private final CertificateTransparencyLogger mLogger;
@@ -53,18 +57,34 @@ class CertificateTransparencyDownloader extends BroadcastReceiver {
     private final Map<String, Long> mDownloadIds = new HashMap<>();
 
     CertificateTransparencyDownloader(
+            Context context,
             DownloadHelper downloadHelper,
             SignatureVerifier signatureVerifier,
             CertificateTransparencyLogger logger,
             Collection<CompatibilityVersion> compatVersions) {
+        mContext = context;
         mSignatureVerifier = signatureVerifier;
         mDownloadHelper = downloadHelper;
         mLogger = logger;
         mCompatVersions = compatVersions;
+
+        CertTransparencyDownloaderSetting.SETTING.registerObserver(context, BackgroundThread.getHandler(), setting -> {
+            int newValue = CertTransparencyDownloaderSetting.SETTING.get(mContext);
+            Log.i(TAG, "setting value changed to " + newValue + ", re-checking pending downloads");
+            checkDownloadRequests();
+            if (newValue != VAL_OFF) {
+                Log.i(TAG, "starting new download sequence");
+                startPublicKeyDownload();
+            }
+        });
+    }
+
+    void checkDownloadRequests() {
+        mDownloadHelper.checkDownloadRequests(mContext);
     }
 
     long startPublicKeyDownload() {
-        long downloadId = download(Config.URL_PUBLIC_KEY);
+        long downloadId = download(Config.publicKeyUrl(mContext));
         if (downloadId != -1) {
             mDownloadIds.put(Config.PUBLIC_KEY_DOWNLOAD_ID, downloadId);
         }
@@ -245,6 +265,13 @@ class CertificateTransparencyDownloader extends BroadcastReceiver {
     }
 
     private long download(String url) {
+        if (CertTransparencyDownloaderSetting.SETTING.get(mContext) == VAL_OFF) {
+            Log.i(TAG, "setting is set to OFF, skipping download of " + url);
+            return -1;
+        }
+
+        Log.d(TAG, "enqueueing download of " + url);
+
         try {
             return mDownloadHelper.startDownload(url);
         } catch (IllegalArgumentException e) {
