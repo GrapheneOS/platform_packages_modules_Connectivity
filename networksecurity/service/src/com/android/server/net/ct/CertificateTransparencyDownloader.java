@@ -21,6 +21,7 @@ import static com.android.server.net.ct.Config.TAG;
 import android.annotation.RequiresApi;
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -33,7 +34,6 @@ import com.android.server.net.ct.CertificateTransparencyLogger.CTLogListUpdateSt
 import com.android.server.net.ct.DownloadHelper.DownloadStatus;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -178,14 +178,33 @@ class CertificateTransparencyDownloader extends BroadcastReceiver {
             return;
         }
 
-        Uri contentUri = getContentDownloadUri(compatVersion);
-        Uri metadataUri = getMetadataDownloadUri(compatVersion);
-        if (contentUri == null || metadataUri == null) {
-            Log.e(TAG, "Invalid URIs");
-            return;
+        final byte[] contentBytes;
+        final byte[] signatureBytes;
+        {
+            Uri contentUri = getContentDownloadUri(compatVersion);
+            Uri metadataUri = getMetadataDownloadUri(compatVersion);
+            if (contentUri == null || metadataUri == null) {
+                Log.e(TAG, "Invalid URIs");
+                return;
+            }
+            ContentResolver cr = mContext.getContentResolver();
+            try (var contentStream = cr.openInputStream(contentUri);
+                 var metadataStream = cr.openInputStream(metadataUri)) {
+                if (contentStream == null) {
+                    throw new IOException();
+                }
+                if (metadataStream == null) {
+                    throw new IOException();
+                }
+                contentBytes = contentStream.readAllBytes();
+                signatureBytes = metadataStream.readAllBytes();
+            } catch (IOException e) {
+                Log.e(TAG, "unable to read content or metadata Uri", e);
+                return;
+            }
         }
 
-        LogListUpdateStatus updateStatus = mSignatureVerifier.verify(contentUri, metadataUri);
+        LogListUpdateStatus updateStatus = mSignatureVerifier.verify(contentBytes, signatureBytes);
 
         if (!updateStatus.isSignatureVerified()) {
             Log.w(TAG, "Log list did not pass verification");
@@ -195,8 +214,8 @@ class CertificateTransparencyDownloader extends BroadcastReceiver {
             return;
         }
 
-        try (InputStream inputStream = context.getContentResolver().openInputStream(contentUri)) {
-            updateStatus = compatVersion.install(inputStream, updateStatus.toBuilder());
+        try {
+            updateStatus = compatVersion.install(contentBytes, updateStatus.toBuilder());
         } catch (IOException e) {
             Log.e(TAG, "Could not install new content", e);
             return;

@@ -26,7 +26,6 @@ import static com.android.server.net.ct.Config.TAG;
 
 import android.annotation.NonNull;
 import android.annotation.RequiresApi;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.net.Uri;
 import android.os.Build;
@@ -123,7 +122,7 @@ public class SignatureVerifier {
         mPublicKey = Optional.of(publicKey);
     }
 
-    LogListUpdateStatus verify(Uri file, Uri signature) {
+    LogListUpdateStatus verify(byte[] contentBytes, byte[] signatureBytes) {
         LogListUpdateStatus.Builder statusBuilder = LogListUpdateStatus.builder();
 
         if (!mPublicKey.isPresent()) {
@@ -132,15 +131,11 @@ public class SignatureVerifier {
             return statusBuilder.build();
         }
 
-        ContentResolver contentResolver = mContext.getContentResolver();
-
-        try (InputStream fileStream = contentResolver.openInputStream(file);
-                InputStream signatureStream = contentResolver.openInputStream(signature)) {
+        try {
             Signature verifier = Signature.getInstance("SHA256withRSA");
             verifier.initVerify(mPublicKey.get());
-            verifier.update(fileStream.readAllBytes());
+            verifier.update(contentBytes);
 
-            byte[] signatureBytes = signatureStream.readAllBytes();
             statusBuilder.setSignature(new String(signatureBytes));
 
             if (!verifier.verify(Base64.getDecoder().decode(signatureBytes))) {
@@ -155,10 +150,6 @@ public class SignatureVerifier {
         } catch (InvalidKeyException e) {
             Log.e(TAG, "Key invalid for log list verification", e);
             statusBuilder.setState(SIGNATURE_INVALID);
-            return statusBuilder.build();
-        } catch (IOException e) {
-            Log.e(TAG, "Could not read log list file", e);
-            statusBuilder.setState(UNABLE_TO_READ_FILE);
             return statusBuilder.build();
         } catch (GeneralSecurityException e) {
             Log.e(TAG, "Could not verify new log list", e);

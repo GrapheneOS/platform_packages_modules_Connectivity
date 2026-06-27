@@ -72,16 +72,14 @@ class CompatibilityVersion {
     /**
      * Installs a log list within this compatibility version directory.
      *
-     * @param newContent an input stream providing the log list
+     * @param contentBytes the log list
      * @param statusBuilder status obj builder containing details of the log list update process
      * @return true if the log list was installed successfully, false otherwise.
      * @throws IOException if the list cannot be saved in the CT directory.
      */
-    LogListUpdateStatus install(InputStream newContent, LogListUpdateStatus.Builder statusBuilder)
+    LogListUpdateStatus install(byte[] contentBytes, LogListUpdateStatus.Builder statusBuilder)
             throws IOException {
-        byte[] contentBytes = newContent.readAllBytes();
-
-        LogListFile newLogList = null;
+        final LogListFile newLogList;
         try {
             newLogList = mLogListProvider.fromBytes(contentBytes);
         } catch (IOException e) {
