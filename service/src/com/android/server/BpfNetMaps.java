@@ -37,7 +37,6 @@ import static android.net.BpfNetMapsConstants.LOOPBACK_ACCESS_METRICS_ENABLED_MA
 import static android.net.BpfNetMapsConstants.LOOPBACK_CHECKS_ENABLED_MAP_PATH;
 import static android.net.BpfNetMapsConstants.PERMISSION_PROPAGATION_ENABLED_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_MIGRATION_ENABLED_MAP_PATH;
-import static android.net.BpfNetMapsConstants.LOCKDOWN_VPN_REGULAR_APP_MATCH;
 import static android.net.BpfNetMapsConstants.UID_OWNER_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_PERMISSION_CHUNK_MAP_PATH;
 import static android.net.BpfNetMapsConstants.UID_PERMISSION_MAP_PATH;
@@ -101,7 +100,6 @@ import android.annotation.Nullable;
 import android.app.StatsManager;
 import android.content.Context;
 import android.net.BpfNetMapsUtils;
-import android.ext.ConnectivityUtil;
 import android.net.INetd;
 import android.net.UidOwnerValue;
 import android.os.Build;
@@ -288,8 +286,6 @@ public class BpfNetMaps {
     public static boolean isL4sSupported() {
         return sL4sSupported;
     }
-
-    private Context mContext;
 
     /**
      * Set configurationMap for test.
@@ -981,7 +977,6 @@ public class BpfNetMaps {
         mNetd = netd;
         mDeps = deps;
         mInterfaceTracker = interfaceTracker;
-        mContext = context;
     }
 
     private void maybeThrow(final int err, final String msg) {
@@ -1358,12 +1353,8 @@ public class BpfNetMaps {
 
         if (add) {
             addRule(uid, LOCKDOWN_VPN_MATCH, "updateUidLockdownRule");
-            if (!ConnectivityUtil.isSystem(mContext, uid)) {
-                addRule(uid, LOCKDOWN_VPN_REGULAR_APP_MATCH, "updateUidLockdownRule");
-            }
         } else {
             removeRule(uid, LOCKDOWN_VPN_MATCH, "updateUidLockdownRule");
-            removeRule(uid, LOCKDOWN_VPN_REGULAR_APP_MATCH, "updateUidLockdownRule");
         }
     }
 

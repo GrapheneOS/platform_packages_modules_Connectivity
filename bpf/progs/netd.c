@@ -1511,21 +1511,6 @@ function int inet_setsockopt(struct bpf_sockopt *ctx,
     }
 
     {
-        // Prevent SO_BINDTODEVICE from being triggered by a UID that is under a lockdown VPN as
-        // this can leak unicast traffic. Can only do this for regular apps as some core system and
-        // system apps rely on this being allowed.
-        // TODO: Review IP_UNICAST_IF and IP_PKTINFO.
-        // TODO: Review PermissionMonitor#hasRestrictedNetworkPermission to see if this covers all
-        //  of the system uids that need to SO_BINDTODEVICE. These uids do not have
-        //  LOCKDOWN_VPN_MATCH.
-        if ((uidRule & LOCKDOWN_VPN_REGULAR_APP_MATCH)
-                && ctx->level == SOL_SOCKET
-                && ctx->optname == SO_BINDTODEVICE) {
-            return SETSOCKOPT_EPERM;
-        }
-    }
-
-    {
         // Prevent kernel-generated multicast traffic (IGMP, MLD) from being triggered by a
         // UID that is under a lockdown VPN. A known leak that still exists is when a UID joins a multicast
         // group prior to being under a lockdown VPN and then becomes under a lockdown VPN. In this case the
