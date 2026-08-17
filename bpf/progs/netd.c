@@ -1511,6 +1511,20 @@ function int inet_setsockopt(struct bpf_sockopt *ctx,
     UidOwnerValue* uidEntry = bpf_uid_owner_map_lookup_elem(&uid);
     uint32_t uidRule = uidEntry ? uidEntry->rule : 0;
 
+    if (ctx->level == SOL_SOCKET
+            && ctx->optname == SO_BINDTODEVICE
+            && !is_system_uid(uid)
+            && !(uidRule & APP_STRICT_LEAK_BLOCKING_DISABLED_MATCH)) {
+        SkBindToDeviceEvent *event = bpf_sk_bind_to_device_event_ringbuf_reserve();
+        if (event != NULL) {
+            event->uid = uid;
+            // Refer to is_netd() for explanation of shift.
+            event->pid = bpf_get_current_pid_tgid() >> 32;
+            bpf_sk_bind_to_device_event_ringbuf_submit(event);
+        }
+        return SETSOCKOPT_EPERM;
+    }
+
     if (!(uidRule & LOCKDOWN_VPN_MATCH)) {
         return SETSOCKOPT_ALLOWED;
     }
