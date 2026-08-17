@@ -63,6 +63,9 @@ private inline fun <reified T> any() = org.mockito.Mockito.any(T::class.java)
 
 @DevSdkIgnoreRunner.MonitorThreadLeak
 @RunWith(DevSdkIgnoreRunner::class)
+/**
+ * atest -c ConnectivityCoverageTests:android.net.connectivity.com.android.server.connectivity.BroadcastReceiveHelperTest
+ */
 class BroadcastReceiveHelperTest {
     private val mockContext = mock(Context::class.java)
     private val testDelegate = TestDelegate()
