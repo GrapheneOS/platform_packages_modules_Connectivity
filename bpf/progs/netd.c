@@ -1510,38 +1510,36 @@ function int inet_setsockopt(struct bpf_sockopt *ctx,
         return SETSOCKOPT_ALLOWED;
     }
 
-    {
-        // Prevent kernel-generated multicast traffic (IGMP, MLD) from being triggered by a
-        // UID that is under a lockdown VPN. A known leak that still exists is when a UID joins a multicast
-        // group prior to being under a lockdown VPN and then becomes under a lockdown VPN. In this case the
-        // IGMP/MLD will be generated when the kernel destroys the thread. This is considered very low
-        // severity.
-        if (ctx->level == IPPROTO_IP
-                && (ctx->optname == IP_ADD_MEMBERSHIP
-                || ctx->optname == IP_ADD_SOURCE_MEMBERSHIP
-                || ctx->optname == IP_DROP_MEMBERSHIP
-                || ctx->optname == IP_DROP_SOURCE_MEMBERSHIP
-                || ctx->optname == IP_BLOCK_SOURCE
-                || ctx->optname == IP_UNBLOCK_SOURCE
-                || ctx->optname == IP_MSFILTER)) {
-            return SETSOCKOPT_EPERM;
-        }
+    // Prevent kernel-generated multicast traffic (IGMP, MLD) from being triggered by a
+    // UID that is under a lockdown VPN. A known leak that still exists is when a UID joins a multicast
+    // group prior to being under a lockdown VPN and then becomes under a lockdown VPN. In this case the
+    // IGMP/MLD will be generated when the kernel destroys the thread. This is considered very low
+    // severity.
+    if (ctx->level == IPPROTO_IP
+            && (ctx->optname == IP_ADD_MEMBERSHIP
+            || ctx->optname == IP_ADD_SOURCE_MEMBERSHIP
+            || ctx->optname == IP_DROP_MEMBERSHIP
+            || ctx->optname == IP_DROP_SOURCE_MEMBERSHIP
+            || ctx->optname == IP_BLOCK_SOURCE
+            || ctx->optname == IP_UNBLOCK_SOURCE
+            || ctx->optname == IP_MSFILTER)) {
+        return SETSOCKOPT_EPERM;
+    }
 
-        if (ctx->level == IPPROTO_IPV6
-                && (ctx->optname == IPV6_ADD_MEMBERSHIP /** IPV6_JOIN_GROUP **/
-                || ctx->optname == IPV6_DROP_MEMBERSHIP /** IPV6_LEAVE_GROUP **/)) {
-            return SETSOCKOPT_EPERM;
-        }
+    if (ctx->level == IPPROTO_IPV6
+            && (ctx->optname == IPV6_ADD_MEMBERSHIP /** IPV6_JOIN_GROUP **/
+            || ctx->optname == IPV6_DROP_MEMBERSHIP /** IPV6_LEAVE_GROUP **/)) {
+        return SETSOCKOPT_EPERM;
+    }
 
-        if ((ctx->level == IPPROTO_IP || ctx->level == IPPROTO_IPV6)
-                && (ctx->optname == MCAST_JOIN_GROUP
-                || ctx->optname == MCAST_LEAVE_GROUP
-                || ctx->optname == MCAST_BLOCK_SOURCE
-                || ctx->optname == MCAST_UNBLOCK_SOURCE
-                || ctx->optname == MCAST_JOIN_SOURCE_GROUP
-                || ctx->optname == MCAST_LEAVE_SOURCE_GROUP)) {
-            return SETSOCKOPT_EPERM;
-        }
+    if ((ctx->level == IPPROTO_IP || ctx->level == IPPROTO_IPV6)
+            && (ctx->optname == MCAST_JOIN_GROUP
+            || ctx->optname == MCAST_LEAVE_GROUP
+            || ctx->optname == MCAST_BLOCK_SOURCE
+            || ctx->optname == MCAST_UNBLOCK_SOURCE
+            || ctx->optname == MCAST_JOIN_SOURCE_GROUP
+            || ctx->optname == MCAST_LEAVE_SOURCE_GROUP)) {
+        return SETSOCKOPT_EPERM;
     }
 
     return SETSOCKOPT_ALLOWED;
