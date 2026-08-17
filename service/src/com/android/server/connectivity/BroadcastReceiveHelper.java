@@ -48,6 +48,7 @@ public class BroadcastReceiveHelper {
     private final DeferredBroadcastReceiver mPackageIntentReceiver;
     private final DeferredBroadcastReceiver mUserIntentReceiver;
     private final DeferredBroadcastReceiver mExternalAppIntentReceiver;
+    private final DeferredBroadcastReceiver mUidIntentReceiver;
 
     /**
      * Interface defining the callback methods for package and user related events.
@@ -68,6 +69,13 @@ public class BroadcastReceiveHelper {
          * @param uid         The user ID of the application that was removed.
          */
         void onPackageRemoved(String packageName, int uid);
+
+        /**
+         * Called when a uid has been removed (all packages using that uid have been removed).
+         *
+         * @param uid The uid that has been removed.
+         */
+        void onUidRemoved(int uid);
 
         /**
          * Called when an existing package has been replaced with a new version.
@@ -103,6 +111,20 @@ public class BroadcastReceiveHelper {
          * @param userHandle The {@link UserHandle} of the user that was removed.
          */
         void onUserRemoved(UserHandle userHandle);
+
+        /**
+         * Called when a user has been started.
+         *
+         * @param userHandle The {@link UserHandle} of the user that was started.
+         */
+        void onUserStarted(UserHandle userHandle);
+
+        /**
+         * Called when a user has been stopped.
+         *
+         * @param userHandle The {@link UserHandle} of the user that was stopped.
+         */
+        void onUserStopped(UserHandle userHandle);
     }
 
     /**
@@ -118,6 +140,7 @@ public class BroadcastReceiveHelper {
         mHandler = handler;
         mCallback = callback;
         mPackageIntentReceiver = new DeferredBroadcastReceiver(mHandler, this::handlePackageIntent);
+        mUidIntentReceiver = new DeferredBroadcastReceiver(mHandler, this::handleUidIntent);
         mExternalAppIntentReceiver =
                 new DeferredBroadcastReceiver(mHandler, this::handleExternalAppIntent);
         mUserIntentReceiver = new DeferredBroadcastReceiver(mHandler, this::handleUserIntent);
@@ -135,6 +158,8 @@ public class BroadcastReceiveHelper {
         final IntentFilter userIntentFilter = new IntentFilter();
         userIntentFilter.addAction(Intent.ACTION_USER_ADDED);
         userIntentFilter.addAction(Intent.ACTION_USER_REMOVED);
+        userIntentFilter.addAction(Intent.ACTION_USER_STARTED);
+        userIntentFilter.addAction(Intent.ACTION_USER_STOPPED);
         userAllContext.registerReceiver(mUserIntentReceiver, userIntentFilter,
                 NETWORK_STACK, mHandler);
 
@@ -145,6 +170,11 @@ public class BroadcastReceiveHelper {
         packageIntentFilter.addAction(Intent.ACTION_PACKAGE_REPLACED);
         packageIntentFilter.addDataScheme("package");
         userAllContext.registerReceiver(mPackageIntentReceiver, packageIntentFilter,
+                NETWORK_STACK, mHandler);
+
+        final IntentFilter uidIntentFilter = new IntentFilter();
+        uidIntentFilter.addAction(Intent.ACTION_UID_REMOVED);
+        userAllContext.registerReceiver(mUidIntentReceiver, uidIntentFilter,
                 NETWORK_STACK, mHandler);
 
         // For PermissionMonitor, listen to EXTERNAL_APPLICATIONS_AVAILABLE is that an app
@@ -244,6 +274,24 @@ public class BroadcastReceiveHelper {
         }
     }
 
+    private void handleUidIntent(Intent intent) {
+        HandlerUtils.ensureRunningOnHandlerThread(mHandler);
+
+        final int uid = intent.getIntExtra(Intent.EXTRA_UID, -1);
+        if (uid == -1) {
+            throw new IllegalArgumentException();
+        }
+
+        switch (intent.getAction()) {
+            case Intent.ACTION_UID_REMOVED:
+                if (!intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) {
+                    mCallback.onUidRemoved(uid);
+                }
+            default:
+                Log.wtf(TAG, "received unexpected intent: " + intent.getAction());
+        }
+    }
+
     private void handleExternalAppIntent(Intent intent) {
         HandlerUtils.ensureRunningOnHandlerThread(mHandler);
         switch (intent.getAction()) {
@@ -261,18 +309,23 @@ public class BroadcastReceiveHelper {
     private void handleUserIntent(Intent intent) {
         HandlerUtils.ensureRunningOnHandlerThread(mHandler);
         final String action = intent.getAction();
-        final UserHandle user = intent.getParcelableExtra(Intent.EXTRA_USER);
-
-        // User should be filled for below intents, check the existence.
+        UserHandle user = intent.getParcelableExtra(Intent.EXTRA_USER);
         if (user == null) {
-            Log.wtf(TAG, intent.getAction() + " broadcast without EXTRA_USER");
-            return;
+            int userId = intent.getIntExtra(Intent.EXTRA_USER_HANDLE, -1);
+            if (userId == -1) {
+                throw new IllegalArgumentException();
+            }
+            user = UserHandle.of(userId);
         }
 
         if (Intent.ACTION_USER_ADDED.equals(action)) {
             mCallback.onUserAdded(user);
         } else if (Intent.ACTION_USER_REMOVED.equals(action)) {
             mCallback.onUserRemoved(user);
+        } else if (Intent.ACTION_USER_STARTED.equals(action)) {
+            mCallback.onUserStarted(user);
+        } else if (Intent.ACTION_USER_STOPPED.equals(action)) {
+            mCallback.onUserStopped(user);
         }  else {
             Log.wtf(TAG, "received unexpected intent: " + action);
         }
