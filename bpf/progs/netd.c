@@ -147,6 +147,11 @@ DEFINE_BPF_MAP_NO_NETD_API(local_net_note_op_enabled_map, ARRAY, uint32_t, bool,
 // used.
 DEFINE_BPF_MAP_NO_NETD_API(local_net_cache_generation_id_map, ARRAY, uint32_t, uint64_t, 1, 25Q2)
 
+// A ring buffer on which blocked SO_BINDTODEVICE events are pushed.
+DEFINE_BPF_RINGBUF_EXT(sk_bind_to_device_event_ringbuf, SkBindToDeviceEvent, 8 * 512,
+                       AID_ROOT, AID_SYSTEM, 0060, "net_shared", DEFAULT_BPF_PIN_SUBDIR,
+                       26Q2, MAXAPI);
+
 // A ring buffer on which loopback access events are pushed.
 DEFINE_BPF_RINGBUF_EXT(loopback_access_ringbuf, LoopbackAccessEvent, 16 * 512,
                        AID_ROOT, AID_SYSTEM, 0060, "net_shared", DEFAULT_BPF_PIN_SUBDIR,

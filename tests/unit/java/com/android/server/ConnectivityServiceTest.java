@@ -427,6 +427,7 @@ import com.android.server.connectivity.PermissionMonitor;
 import com.android.server.connectivity.ProxyTracker;
 import com.android.server.connectivity.QosCallbackTracker;
 import com.android.server.connectivity.QuicConnectionCloser;
+import com.android.server.connectivity.SkBindToDeviceEventListener;
 import com.android.server.connectivity.TcpKeepaliveController;
 import com.android.server.connectivity.UidRangeUtils;
 import com.android.server.net.NetworkPinner;
@@ -662,6 +663,8 @@ public class ConnectivityServiceTest {
     @Mock QuicConnectionCloser mQuicConnectionCloser;
     @Mock
     LocalNetEventListener mLocalNetEventListener;
+    @Mock
+    SkBindToDeviceEventListener mSkBindToDeviceEventListener;
 
     // BatteryStatsManager is final and cannot be mocked with regular mockito, so just mock the
     // underlying binder calls.
@@ -2351,6 +2354,12 @@ public class ConnectivityServiceTest {
         public LocalNetEventListener getLocalNetEventListener(
                 Context context, Looper looper, boolean metricsEnabled, boolean noteOpsEnabled) {
             return mLocalNetEventListener;
+        }
+
+        @Override
+        public SkBindToDeviceEventListener getSkBindToDeviceEventListener(
+                Context context, Looper looper) {
+            return mSkBindToDeviceEventListener;
         }
 
         final ArrayTrackRecord<Pair<String, Long>> mRateLimitHistory = new ArrayTrackRecord<>();

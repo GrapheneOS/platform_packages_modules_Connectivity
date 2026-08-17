@@ -235,6 +235,7 @@ ASSERT_STRING_EQUAL(XT_BPF_DENYLIST_PROG_PATH,  BPF_NETD_PATH "prog_netd_skfilte
 #define LOCAL_NET_NOTE_OP_RINGBUF_PATH BPF_NETD_PATH "map_netd_local_net_note_op_ringbuf"
 #define LOCAL_NET_NOTE_OP_CACHE_MAP_PATH BPF_NETD_PATH "map_netd_local_net_note_op_cache_map"
 #define LOCAL_NET_NOTE_OP_ENABLED_MAP_PATH BPF_NETD_PATH "map_netd_local_net_note_op_enabled_map"
+#define SK_BIND_TO_DEVICE_EVENT_RINGBUF_PATH BPF_NETD_PATH "map_netd_sk_bind_to_device_event_ringbuf"
 #define LOCAL_NET_CACHE_GENERATION_ID_MAP_PATH                                 \
     BPF_NETD_PATH "map_netd_local_net_cache_generation_id_map"
 #define LOOPBACK_ACCESS_RINGBUF_NETD_PATH BPF_NETD_PATH "map_netd_loopback_access_ringbuf"
@@ -360,6 +361,13 @@ typedef struct {
     uint32_t pid;
 } LocalNetNoteOp;
 STRUCT_SIZE(LocalNetNoteOp, 4 + 4); // 8
+
+// uid and pid of process that had their attempt to use SO_BINDTODEVICE blocked.
+typedef struct {
+    uint32_t uid;
+    uint32_t pid;
+} SkBindToDeviceEvent;
+STRUCT_SIZE(SkBindToDeviceEvent, 4 + 4); // 8
 
 // IP packet data from an __sk_buff
 typedef struct {
