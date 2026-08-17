@@ -2419,6 +2419,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mUserManager = (UserManager) context.getSystemService(Context.USER_SERVICE);
 
         mUserAllContext = mContext.createContextAsUser(UserHandle.ALL, 0 /* flags */);
+        mPermissionMonitor.registerGosPackageStateChangeCallback();
         // TODO: Move all intent receivers to the helper class.
         mBroadcastReceiveHelper.registerReceivers();
 
@@ -8546,6 +8547,21 @@ public class ConnectivityService extends IConnectivityManager.Stub
             mAppOptInDefaultNetworkController.onUserRemoved(user);
         }
         mSettingsObserver.onUsersChanged();
+    }
+
+    @Override
+    public void onUserStarted(@NonNull final UserHandle user) {
+        mPermissionMonitor.onUserStarted(user);
+    }
+
+    @Override
+    public void onUserStopped(@NonNull final UserHandle user) {
+        mPermissionMonitor.onUserStopped(user);
+    }
+
+    @Override
+    public void onUidRemoved(int uid) {
+        mPermissionMonitor.onUidRemoved(uid);
     }
 
     @Override

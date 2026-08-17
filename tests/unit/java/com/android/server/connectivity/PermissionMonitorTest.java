@@ -106,6 +106,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.GosPackageState;
+import android.content.pm.GosPackageStateFlag;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.ContentObserver;
@@ -438,6 +440,14 @@ public class PermissionMonitorTest {
 
     private void onUserRemoved(UserHandle user) {
         processOnHandlerThread(() -> mPermissionMonitor.onUserRemoved(user));
+    }
+
+    private void onUserStopped(UserHandle user) {
+        processOnHandlerThread(() -> mPermissionMonitor.onUserStopped(user));
+    }
+
+    private void onUidRemoved(int uid) {
+        processOnHandlerThread(() -> mPermissionMonitor.onUidRemoved(uid));
     }
 
     private void onPackageAdded(String packageName, int uid) {
@@ -2849,5 +2859,179 @@ public class PermissionMonitorTest {
         // MOCK_UID11/MOCK_UID12/MOCK_UID13.
         addUserAndVerifyUidsPermissions(MOCK_USER2, pkgs2, PERMISSION_UNINSTALLED,
                 PERMISSION_UNINSTALLED, PERMISSION_UNINSTALLED);
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_CoreUid_DoesNothing() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = SYSTEM_APP_UID11;
+        String packageName = SYSTEM_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid, IsSystemPackage.TRUE);
+        doReturn(GosPackageState.NONE).when(mDeps).getGosPackageState(packageName, userId);
+
+        assertTrue(UserHandle.isCore(uid));
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+
+        verify(mBpfNetMaps, never()).updateAppStrictLeakBlockingDisabledRule(anyInt(), anyBoolean());
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_WasAndIsEnabled_DoesNothing() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        doReturn(GosPackageState.NONE).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+
+        verify(mBpfNetMaps, never()).updateAppStrictLeakBlockingDisabledRule(anyInt(), anyBoolean());
+    }
+
+    private GosPackageState createStrictLeakBlockingNonDefaultState(String packageName, int uid) {
+        GosPackageState state = GosPackageState.NONE;
+        GosPackageState.Editor stateEditor = state.createEditor(packageName, uid);
+        stateEditor.addFlag(GosPackageStateFlag.STRICT_LEAK_BLOCKING_NON_DEFAULT);
+        return stateEditor.toState();
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_WasEnabledIsDisabled_Disables() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(uid, true);
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(Process.toSdkSandboxUid(uid), true);
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_WasAndIsDisabled_DoesNothing() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+        // Pass state manually to simulate a more realistic scenario where the second call comes
+        // from OnGosPackageStateChanged. Doesn't matter either way.
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, state);
+
+        // Should only be called 2 times for the initial disable (as per
+        // testUpdateAppStrictLeakBlockingBpf_WasEnabledIsDisabled_Disables).
+        verify(mBpfNetMaps, times(2)).updateAppStrictLeakBlockingDisabledRule(anyInt(),
+                anyBoolean());
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_WasDisabledIsEnabled_Enables() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid,
+                GosPackageState.NONE);
+
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(uid, false);
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(Process.toSdkSandboxUid(uid),
+                false);
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_DisableEnableTwice_DisableEnablesTwice() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, state);
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid,
+                GosPackageState.NONE);
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid,
+                state);
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid,
+                GosPackageState.NONE);
+
+        verify(mBpfNetMaps, times(2)).updateAppStrictLeakBlockingDisabledRule(uid, true);
+        verify(mBpfNetMaps, times(2)).updateAppStrictLeakBlockingDisabledRule(Process.toSdkSandboxUid(uid),
+                true);
+        verify(mBpfNetMaps, times(2)).updateAppStrictLeakBlockingDisabledRule(uid, false);
+        verify(mBpfNetMaps, times(2)).updateAppStrictLeakBlockingDisabledRule(Process.toSdkSandboxUid(uid),
+                false);
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_UidNoPackage_DoesNothing() {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+
+        verify(mBpfNetMaps, never()).updateAppStrictLeakBlockingDisabledRule(anyInt(), anyBoolean());
+    }
+
+    @Test
+    public void testUpdateAppStrictLeakBlockingBpf_PackageNoAppInfo_DoesNothing() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        PackageInfo pkg = buildAndMockPackageInfoWithPermissions(packageName, uid);
+        pkg.applicationInfo = null;
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+
+        verify(mBpfNetMaps, never()).updateAppStrictLeakBlockingDisabledRule(anyInt(), anyBoolean());
+    }
+
+    @Test
+    public void testOnUserStopped_LeakBlockingDisabled_RemovesBpfRules() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+        onUserStopped(UserHandle.of(userId));
+
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(uid, false);
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(Process.toSdkSandboxUid(uid),
+                false);
+    }
+
+    @Test
+    public void testOnUidRemoved_LeakBlockingDisabled_EnablesLeakBlocking() throws Exception {
+        int userId = MOCK_USER_ID1;
+        int uid = MOCK_UID11;
+        String packageName = MOCK_PACKAGE1;
+        buildAndMockPackageInfoWithPermissions(packageName, uid);
+        GosPackageState state = createStrictLeakBlockingNonDefaultState(packageName, uid);
+        doReturn(state).when(mDeps).getGosPackageState(packageName, userId);
+
+        mPermissionMonitor.updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, null);
+        onUidRemoved(uid);
+
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(uid, false);
+        verify(mBpfNetMaps).updateAppStrictLeakBlockingDisabledRule(Process.toSdkSandboxUid(uid),
+                false);
     }
 }
