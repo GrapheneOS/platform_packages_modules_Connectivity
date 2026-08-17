@@ -216,6 +216,7 @@ public class PermissionMonitorTest {
     private static final String MOCK_PACKAGE3 = "appName3";
     private static final String SYSTEM_PACKAGE1 = "sysName1";
     private static final String SYSTEM_PACKAGE2 = "sysName2";
+    private static final String PARTITION_DATA = "data";
     private static final String PARTITION_SYSTEM = "system";
     private static final String PARTITION_OEM = "oem";
     private static final String PARTITION_PRODUCT = "product";
@@ -311,6 +312,11 @@ public class PermissionMonitorTest {
         return SdkLevel.isAtLeastT() && Process.isApplicationUid(uid);
     }
 
+    private static PackageInfo nonSystemPackageInfoWithPermissions(String... permissions) {
+        return packageInfoWithPermissions(
+                REQUESTED_PERMISSION_GRANTED, permissions, PARTITION_DATA);
+    }
+
     private static PackageInfo systemPackageInfoWithPermissions(String... permissions) {
         return packageInfoWithPermissions(
                 REQUESTED_PERMISSION_GRANTED, permissions, PARTITION_SYSTEM);
@@ -344,12 +350,30 @@ public class PermissionMonitorTest {
                 break;
         }
         packageInfo.applicationInfo.privateFlags = privateFlags;
+        if (privateFlags != 0 || partition.equals(PARTITION_SYSTEM)) {
+            packageInfo.applicationInfo.flags |= ApplicationInfo.FLAG_SYSTEM;
+        }
         return packageInfo;
+    }
+
+    private enum IsSystemPackage {
+        TRUE,
+        FALSE
     }
 
     private static PackageInfo buildPackageInfo(String packageName, int uid,
             String... permissions) {
-        final PackageInfo pkgInfo = systemPackageInfoWithPermissions(permissions);
+        return buildPackageInfo(packageName, uid, IsSystemPackage.FALSE, permissions);
+    }
+
+    private static PackageInfo buildPackageInfo(String packageName, int uid,
+            IsSystemPackage isSystemPackage, String... permissions) {
+        PackageInfo pkgInfo;
+        if (isSystemPackage == IsSystemPackage.TRUE) {
+            pkgInfo = systemPackageInfoWithPermissions(permissions);
+        } else {
+            pkgInfo = nonSystemPackageInfoWithPermissions(permissions);
+        }
         pkgInfo.packageName = packageName;
         pkgInfo.applicationInfo.uid = uid;
         return pkgInfo;
@@ -369,7 +393,14 @@ public class PermissionMonitorTest {
 
     private PackageInfo buildAndMockPackageInfoWithPermissions(String packageName, int uid,
             String... permissions) throws Exception {
-        final PackageInfo packageInfo = buildPackageInfo(packageName, uid, permissions);
+        return buildAndMockPackageInfoWithPermissions(packageName, uid, IsSystemPackage.FALSE,
+                permissions);
+    }
+
+    private PackageInfo buildAndMockPackageInfoWithPermissions(String packageName, int uid,
+            IsSystemPackage isSystemPackage, String... permissions) throws Exception {
+        final PackageInfo packageInfo = buildPackageInfo(packageName, uid, isSystemPackage,
+                permissions);
         // This will return the wrong UID for the package when queried with other users.
         doReturn(packageInfo).when(mPackageManager)
                 .getPackageInfo(eq(packageName), anyInt() /* flag */);
