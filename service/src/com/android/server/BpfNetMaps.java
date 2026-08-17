@@ -16,6 +16,7 @@
 
 package com.android.server;
 
+import static android.net.BpfNetMapsConstants.APP_STRICT_LEAK_BLOCKING_DISABLED_MATCH;
 import static android.net.BpfNetMapsConstants.CONFIGURATION_MAP_PATH;
 import static android.net.BpfNetMapsConstants.COOKIE_TAG_MAP_PATH;
 import static android.net.BpfNetMapsConstants.CURRENT_STATS_MAP_CONFIGURATION_KEY;
@@ -1355,6 +1356,16 @@ public class BpfNetMaps {
             addRule(uid, LOCKDOWN_VPN_MATCH, "updateUidLockdownRule");
         } else {
             removeRule(uid, LOCKDOWN_VPN_MATCH, "updateUidLockdownRule");
+        }
+    }
+
+    public void updateAppStrictLeakBlockingDisabledRule(final int uid, final boolean add) {
+        if (add) {
+            addRule(uid, APP_STRICT_LEAK_BLOCKING_DISABLED_MATCH,
+                    "updateAppStrictLeakBlockingDisabledRule");
+        } else {
+            removeRule(uid, APP_STRICT_LEAK_BLOCKING_DISABLED_MATCH,
+                    "updateAppStrictLeakBlockingDisabledRule");
         }
     }
 
