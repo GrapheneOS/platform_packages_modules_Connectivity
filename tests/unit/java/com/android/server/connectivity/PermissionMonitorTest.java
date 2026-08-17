@@ -161,6 +161,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
+/**
+ * atest -c ConnectivityCoverageTests:android.net.connectivity.com.android.server.connectivity.PermissionMonitorTest
+ */
 @RunWith(DevSdkIgnoreRunner.class)
 @SmallTest
 @DevSdkIgnoreRule.IgnoreUpTo(Build.VERSION_CODES.R)
