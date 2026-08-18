@@ -407,6 +407,8 @@ public class PermissionMonitorTest {
         // This will return the wrong UID for the package when queried with other users.
         doReturn(packageInfo).when(mPackageManager)
                 .getPackageInfo(eq(packageName), anyInt() /* flag */);
+        doReturn(packageInfo).when(mPackageManager)
+                .getPackageInfoAsUser(eq(packageName), anyInt() /* flag */, eq(UserHandle.getUserId(uid)));
         if (isAtLeastB()) {
             // Runtime permission checks for local net restrictions were introduced in 25Q2
             for (String permission : permissions) {
