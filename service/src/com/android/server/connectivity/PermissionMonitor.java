@@ -67,10 +67,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.GosPackageState;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.database.ContentObserver;
+import android.ext.ConnectivityUtil;
 import android.net.ConnectivitySettingsManager;
 import android.net.INetd;
 import android.net.UidRange;
@@ -106,6 +108,8 @@ import com.android.server.ConnectivityStatsLog;
 import com.android.server.LocalManagerRegistry;
 import com.android.server.permission.PermissionBpfMap;
 import com.android.server.permission.PermissionManagerLocal;
+import com.android.server.pm.PackageManagerLocal;
+import com.android.server.pm.PackageManagerLocal.GosPackageStateChangeCallback;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -193,6 +197,10 @@ public class PermissionMonitor {
     // It is used only when permission_map_uid_migration flag is enabled
     @GuardedBy("this")
     private final Map<UserHandle, SparseIntArray> mUsersUidsTrafficPermissions = new ArrayMap<>();
+
+    // For each user, stores the uids that have app strict leak blocking disabled.
+    private final Map<UserHandle, Set<Integer>> mUsersUidsAppStrictLeakBlockingDisabled =
+            new ArrayMap<>();
 
     private static final int SYSTEM_APPID = SYSTEM_UID;
 
@@ -416,6 +424,10 @@ public class PermissionMonitor {
          */
         public boolean isAccessLocalNetworkPermissionEnabled() {
             return accessLocalNetworkPermissionEnabled();
+        }
+
+        public GosPackageState getGosPackageState(String packageName, int userId) {
+            return GosPackageState.get(packageName, userId);
         }
     }
 
@@ -970,7 +982,159 @@ public class PermissionMonitor {
             mPermissionUpdateLogs.log("New user(" + user.getIdentifier() + ") added: nPerm uids="
                     + uids + ", tPerm appIds=" + addedUserAppIds);
         }
+    }
 
+    public void registerGosPackageStateChangeCallback() {
+        GosPackageStateChangeCallback callback = new GosPackageStateChangeCallback(
+                new Handler(mThread.getLooper())) {
+            @Override
+            public void onGosPackageStateChanged(int uid, @NonNull GosPackageState state,
+                    int userId) {
+                PermissionMonitor.this.onGosPackageStateChanged(uid, state, userId);
+            }
+        };
+        PackageManagerLocal pml = LocalManagerRegistry.getManager(PackageManagerLocal.class);
+        if (pml != null) {
+            pml.addGosPackageStateChangeCallback(callback);
+        }
+    }
+
+    public void onGosPackageStateChanged(int uid, @NonNull GosPackageState ps,
+            int userId) {
+        ensureRunningOnHandlerThread();
+        updateAppStrictLeakBlockingBpf(UserHandle.of(userId), uid, ps);
+    }
+
+    public void updateAppStrictLeakBlockingBpf(UserHandle user, int uid,
+            @Nullable GosPackageState ps) {
+        // Core uids have strict leak blocking unconditionally disabled in eBPF, so ignore them.
+        if (UserHandle.isCore(uid)) {
+            return;
+        }
+
+        boolean wasDisabled = wasAppStrictLeakBlockingDisabled(user, uid);
+        boolean isDisabled = isAppStrictLeakBlockingDisabled(user.getIdentifier(), uid, ps);
+
+        if (wasDisabled == isDisabled) {
+            return;
+        }
+
+        if (isDisabled) {
+            disableAppStrictLeakBlocking(user, uid);
+        } else {
+            enableAppStrictLeakBlocking(user, uid);
+        }
+    }
+
+    private boolean wasAppStrictLeakBlockingDisabled(UserHandle user, int uid) {
+        Set<Integer> disabledUids = mUsersUidsAppStrictLeakBlockingDisabled.get(user);
+        if (disabledUids == null) {
+            return false;
+        }
+        return disabledUids.contains(uid);
+    }
+
+    private boolean isAppStrictLeakBlockingDisabled(int userId, int uid,
+            @Nullable GosPackageState ps) {
+        String[] packageNames = mPackageManager.getPackagesForUid(uid);
+        if (packageNames == null) {
+            // All packages for this uid have been uninstalled, so there's no need to disable strict
+            // leak blocking.
+            return false;
+        }
+
+        if (ps == null) {
+            // GosPackageState is same for all packages that share a uid, so just use 0th.
+            ps = mDeps.getGosPackageState(packageNames[0], userId);
+        }
+
+        ApplicationInfo ai = null;
+        // Iterate all packageNames in search of an applicationInfo. For AswSocketBindToDevice it
+        // doesn't matter which package's applicationInfo we use, only that the packages all share a
+        // uid.
+        for (String packageName : packageNames) {
+            try {
+                ai = mPackageManager.getPackageInfoAsUser(packageName, 0, userId).applicationInfo;
+            } catch (NameNotFoundException ignored) {}
+
+            if (ai != null) {
+                // Technically a package name could have been reinstalled with a different uid, so
+                // ensure the uids match.
+                if (ai.uid == uid) {
+                    break;
+                }
+                ai = null;
+            }
+        }
+
+        if (ai == null) {
+            // No applicationInfo implies no executable code, so there's no need to disable strict
+            // leak blocking.
+            return false;
+        }
+
+        return !ConnectivityUtil.isAppStrictLeakBlockingEnabled(mContext, userId, ai, ps);
+    }
+
+    private void disableAppStrictLeakBlocking(UserHandle user, int uid) {
+        Set<Integer> disabledUids = mUsersUidsAppStrictLeakBlockingDisabled.get(user);
+        if (disabledUids == null) {
+            disabledUids = new ArraySet<>();
+            mUsersUidsAppStrictLeakBlockingDisabled.put(user, disabledUids);
+        }
+        for (int associatedUid : getAssociatedUids(uid)) {
+            disabledUids.add(associatedUid);
+            mBpfNetMaps.updateAppStrictLeakBlockingDisabledRule(associatedUid, true);
+        }
+    }
+
+    private void enableAppStrictLeakBlocking(UserHandle user, int uid) {
+        Set<Integer> disabledUids = mUsersUidsAppStrictLeakBlockingDisabled.get(user);
+        for (int associatedUid : getAssociatedUids(uid)) {
+            disabledUids.remove(associatedUid);
+            mBpfNetMaps.updateAppStrictLeakBlockingDisabledRule(associatedUid, false);
+        }
+    }
+
+    private List<Integer> getAssociatedUids(int uid) {
+        ArrayList<Integer> associatedUids = new ArrayList<>(List.of(uid));
+        if (hasSdkSandbox(uid)) {
+            associatedUids.add(Process.toSdkSandboxUid(uid));
+        }
+        return associatedUids;
+    }
+
+    public void onUserStarted(@NonNull UserHandle user) {
+        ensureRunningOnHandlerThread();
+        final List<PackageInfo> packages = mContext.getPackageManager()
+                .getInstalledPackagesAsUser(0, user.getIdentifier());
+
+        for (PackageInfo pi : packages) {
+            if (pi.applicationInfo != null) {
+                updateAppStrictLeakBlockingBpf(user, pi.applicationInfo.uid, null);
+            }
+        }
+    }
+
+    public void onUserStopped(@NonNull UserHandle user) {
+        ensureRunningOnHandlerThread();
+        Set<Integer> disabledUids = mUsersUidsAppStrictLeakBlockingDisabled.get(user);
+        for (Integer disabledUid : disabledUids) {
+            // Remove the rule so that the BPF UidOwnerValue can potentially be marked for removal.
+            mBpfNetMaps.updateAppStrictLeakBlockingDisabledRule(disabledUid, false);
+        }
+
+        mUsersUidsAppStrictLeakBlockingDisabled.remove(user);
+    }
+
+    public void onUidRemoved(int uid) {
+        ensureRunningOnHandlerThread();
+        UserHandle user = UserHandle.getUserHandleForUid(uid);
+        if (wasAppStrictLeakBlockingDisabled(user, uid)) {
+            // The uid is guaranteed not to be reused until next boot, but enabling it allows the
+            // BPF UidOwnerValue to potentially be marked for removal.
+            enableAppStrictLeakBlocking(user, uid);
+        }
     }
 
     /**
