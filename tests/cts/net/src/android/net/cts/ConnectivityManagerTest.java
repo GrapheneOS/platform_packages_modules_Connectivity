@@ -342,10 +342,6 @@ public class ConnectivityManagerTest {
             "network_metered_multipath_preference";
     private static final String NETWORK_METERED_MULTIPATH_PREFERENCE_RES_NAME =
             "config_networkMeteredMultipathPreference";
-    private static final String KEEPALIVE_ALLOWED_UNPRIVILEGED_RES_NAME =
-            "config_allowedUnprivilegedKeepalivePerUid";
-    private static final String KEEPALIVE_RESERVED_PER_SLOT_RES_NAME =
-            "config_reservedPrivilegedKeepaliveSlots";
     private static final String TEST_RESTRICTED_NW_IFACE_NAME = "test-restricted-nw";
 
     private static final LinkAddress TEST_LINKADDR = new LinkAddress(
@@ -2218,19 +2214,7 @@ public class ConnectivityManagerTest {
         final InetAddress srcAddr = getFirstV4Address(network);
         assumeTrue("This test requires native IPv4", srcAddr != null);
 
-        // Resource ID might be shifted on devices that compiled with different symbols.
-        // Thus, resolve ID at runtime is needed.
-        final int allowedUnprivilegedPerUid =
-                getIntResourceForName(KEEPALIVE_ALLOWED_UNPRIVILEGED_RES_NAME);
-        final int reservedPrivilegedSlots =
-                getIntResourceForName(KEEPALIVE_RESERVED_PER_SLOT_RES_NAME);
-        // Verifies that unprivileged request per uid cannot exceed the limit customized in the
-        // resource. Currently, unprivileged keepalive slots are limited to Nat-T only, this test
-        // does not apply to TCP.
-        assertGreaterOrEqual(supported, reservedPrivilegedSlots);
-        assertGreaterOrEqual(supported, allowedUnprivilegedPerUid);
-        final int expectedUnprivileged =
-                Math.min(allowedUnprivilegedPerUid, supported - reservedPrivilegedSlots);
+        final int expectedUnprivileged = 0;
         assertEquals(expectedUnprivileged,
                 createConcurrentSocketKeepalives(network, srcAddr, supported + 1, 0));
     }
