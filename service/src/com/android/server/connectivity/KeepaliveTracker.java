@@ -107,13 +107,6 @@ public class KeepaliveTracker {
     @NonNull
     private final int[] mSupportedKeepalives;
 
-    // Reserved privileged keepalive slots per transport. Caller's permission will be enforced if
-    // the number of remaining keepalive slots is less than or equal to the threshold.
-    private final int mReservedPrivilegedSlots;
-
-    // Allowed unprivileged keepalive slots per uid. Caller's permission will be enforced if
-    // the number of remaining keepalive slots is less than or equal to the threshold.
-    private final int mAllowedUnprivilegedSlotsForUid;
     private final Dependencies mDependencies;
     public KeepaliveTracker(Context context, Handler handler) {
         this(context, handler, new TcpKeepaliveController(handler), new Dependencies());
@@ -127,12 +120,6 @@ public class KeepaliveTracker {
         mDependencies = deps;
 
         mSupportedKeepalives = mDependencies.getSupportedKeepalives(mContext);
-
-        final ConnectivityResources res = mDependencies.createConnectivityResources(mContext);
-        mReservedPrivilegedSlots = res.get().getInteger(
-                R.integer.config_reservedPrivilegedKeepaliveSlots);
-        mAllowedUnprivilegedSlotsForUid = res.get().getInteger(
-                R.integer.config_allowedUnprivilegedKeepalivePerUid);
     }
 
     /**
@@ -336,30 +323,9 @@ public class KeepaliveTracker {
 
             if (mPrivileged) return SUCCESS;
 
-            final int supported = KeepaliveUtils.getSupportedKeepalivesForNetworkCapabilities(
-                    mSupportedKeepalives, mNai.networkCapabilities);
-
-            int takenUnprivilegedSlots = 0;
-            for (final KeepaliveInfo ki : networkKeepalives.values()) {
-                if (!ki.mPrivileged) ++takenUnprivilegedSlots;
-            }
-            if (takenUnprivilegedSlots > supported - mReservedPrivilegedSlots) {
-                return ERROR_INSUFFICIENT_RESOURCES;
-            }
-
-            // Count unprivileged keepalives for the same uid across networks.
-            int unprivilegedCountSameUid = 0;
-            for (final HashMap<Integer, KeepaliveInfo> kaForNetwork : mKeepalives.values()) {
-                for (final KeepaliveInfo ki : kaForNetwork.values()) {
-                    if (ki.mUid == mUid) {
-                        unprivilegedCountSameUid++;
-                    }
-                }
-            }
-            if (unprivilegedCountSameUid > mAllowedUnprivilegedSlotsForUid) {
-                return ERROR_INSUFFICIENT_RESOURCES;
-            }
-            return SUCCESS;
+            // Apps should always gracefully handle this error because it could easily occur even if
+            // unprivileged keepalives were allowed.
+            return ERROR_INSUFFICIENT_RESOURCES;
         }
 
         private int checkLimit() {
@@ -948,8 +914,6 @@ public class KeepaliveTracker {
      */
     public void dump(IndentingPrintWriter pw) {
         pw.println("Supported Socket keepalives: " + Arrays.toString(mSupportedKeepalives));
-        pw.println("Reserved Privileged keepalives: " + mReservedPrivilegedSlots);
-        pw.println("Allowed Unprivileged keepalives per uid: " + mAllowedUnprivilegedSlotsForUid);
         pw.println("Socket keepalives:");
         pw.increaseIndent();
         for (NetworkAgentInfo nai : mKeepalives.keySet()) {
