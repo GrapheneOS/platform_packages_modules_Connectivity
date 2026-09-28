@@ -74,6 +74,11 @@ static const int SETSOCKOPT_ALLOWED = 1;
     DEFINE_BPF_MAP_UGM(the_map, TYPE, TypeOfKey, TypeOfValue, num_entries, \
                        AID_ROOT, AID_NET_BW_ACCT, 0660)
 
+// Keep in sync with config_multiuserMaximumUsers.
+#define MAX_USERS 32
+// AID_USER_OFFSET is equivalent to PER_USER_RANGE.
+#define TOTAL_UIDS (MAX_USERS * AID_USER_OFFSET)
+
 // Bpf map arrays on creation are preinitialized to 0 and do not support deletion of a key,
 // see: kernel/bpf/arraymap.c array_map_delete_elem() returns -EINVAL (from both syscall and ebpf)
 // Additionally on newer kernels the bpf jit can optimize out the lookups.
@@ -91,11 +96,21 @@ DEFINE_BPF_MAP_NO_NETD(app_uid_stats_map, HASH, uint32_t, StatsValue, 10000)
 DEFINE_BPF_MAP_RO_NETD(stats_map_A, HASH, StatsKey, StatsValue, STATS_MAP_SIZE)
 DEFINE_BPF_MAP_RO_NETD(stats_map_B, HASH, StatsKey, StatsValue, STATS_MAP_SIZE)
 DEFINE_BPF_MAP_NO_NETD(iface_stats_map, HASH, uint32_t, StatsValue, 1000)
-DEFINE_BPF_MAP_RO_NETD(uid_owner_map, HASH, uint32_t, UidOwnerValue, 20000)
-DEFINE_BPF_MAP_RO_NETD(uid_permission_map, HASH, uint32_t, uint8_t, 6000)
-// Support up to 1152 * 900 = 1,036,800 UIDs
+// Cover total uid space with dynamic allocation. Size if fully allocated is ~48.83 MiB, although
+// this won't be reached in practice for multiple reasons such as there being a concurrent running
+// user limit and many of the uids being unusable.
+DEFINE_BPF_MAP_RO_NETD(uid_owner_map, HASH, uint32_t, UidOwnerValue, -(TOTAL_UIDS))
+// Since uid_migration_enabled_map stores true, this map is deprecated in favor of
+// uid_permission_chunk_map. In case it gets reused, cover total uid space with dynamic allocation.
+// Size if fully allocated is ~24.41 MiB, although won't be reached in practice.
+DEFINE_BPF_MAP_RO_NETD(uid_permission_map, HASH, uint32_t, uint8_t, -(TOTAL_UIDS))
+// Cover total uid space with dynamic allocation. Size if fully allocated is ~2.73 MiB, although
+// won't be reached in practice.
 DEFINE_BPF_MAP_RO_NETD(uid_permission_chunk_map, HASH, uint32_t,
-                       UidPermissionChunk, -900)
+                       UidPermissionChunk, -((TOTAL_UIDS / CHUNK_UID_COUNT)+1))
+// TODO: The theoretical key space for this map is the entire IPv6 address space, so 100 is too
+// small in theory and might also be too small in practice. Update this when reviewing ingress
+// leaks.
 DEFINE_BPF_MAP_NO_NETD(ingress_discard_map, HASH, IngressDiscardKey, IngressDiscardValue, 100)
 
 DEFINE_BPF_MAP_RW_NETD(netd_pid_map, ARRAY, uint32_t, uint32_t, 1)
@@ -119,10 +134,16 @@ DEFINE_BPF_RINGBUF_EXT(packet_trace_ringbuf, PacketTrace, 32 * 1024,
 
 DEFINE_BPF_MAP_RO_NETD(data_saver_enabled_map, ARRAY, uint32_t, bool, 1)
 
-DEFINE_BPF_MAP_NO_NETD_API(local_net_access_map, LPM_TRIE, LocalNetAccessKey, bool, 1000, 25Q2)
+// It appears that there are < 10 entries into this map per interface, therefore the upstream size
+// of 1000 is probably safe. Because LPM_TRIE is dynamically allocated by default, increasing it by
+// 10x adds no overhead. Size if fully allocated is ~0.31 MiB, although won't be reached in
+// practice.
+DEFINE_BPF_MAP_NO_NETD_API(local_net_access_map, LPM_TRIE, LocalNetAccessKey, bool, 10000, 25Q2)
 
-// not preallocated
-DEFINE_BPF_MAP_NO_NETD_API(local_net_blocked_uid_map, HASH, uint32_t, bool, -1000, 25Q2)
+// Since permission_propagation_enabled_map stores true this map is deprecated in favor of
+// uid_permission_chunk_map. In case it gets reused, cover total uid space with dynamic allocation.
+// Size if fully allocated is ~24.41 MiB, although won't be reached in practice.
+DEFINE_BPF_MAP_NO_NETD_API(local_net_blocked_uid_map, HASH, uint32_t, bool, -(TOTAL_UIDS), 25Q2)
 
 // This trie holds exceptions to blocked access listed in local_net_access_map.
 // Although it is a trie, it is only used as a map (all entries use the maximum
