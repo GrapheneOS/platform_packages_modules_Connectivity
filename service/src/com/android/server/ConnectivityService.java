@@ -435,6 +435,7 @@ import com.android.server.connectivity.ProfileNetworkPreferenceInfo;
 import com.android.server.connectivity.ProxyTracker;
 import com.android.server.connectivity.QosCallbackTracker;
 import com.android.server.connectivity.QuicConnectionCloser;
+import com.android.server.connectivity.SkBindToDeviceEventListener;
 import com.android.server.connectivity.UidRangeUtils;
 import com.android.server.connectivity.VpnNetworkPreferenceInfo;
 import com.android.server.connectivity.proxy.MultiProxyTracker;
@@ -660,6 +661,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
     protected INetd mNetd;
     private DscpPolicyTracker mDscpPolicyTracker = null;
     private final LocalNetEventListener mLocalNetEventListener;
+    private final SkBindToDeviceEventListener mSkBindToDeviceEventListener;
     private final NetworkStatsManager mStatsManager;
     private final NetworkPolicyManager mPolicyManager;
     private final BpfNetMaps mBpfNetMaps;
@@ -1955,6 +1957,14 @@ public class ConnectivityService extends IConnectivityManager.Stub
         }
 
         /**
+         * Creates a SkBindToDeviceEventListener.
+         */
+        public SkBindToDeviceEventListener getSkBindToDeviceEventListener(Context context,
+                Looper looper) {
+            return new SkBindToDeviceEventListener(context, looper);
+        }
+
+        /**
          * Wraps {@link TcUtils#tcFilterAddDevIngressPolice}
          */
         public void enableIngressRateLimit(String iface, long rateInBytesPerSecond) {
@@ -2333,6 +2343,9 @@ public class ConnectivityService extends IConnectivityManager.Stub
             mLocalNetEventListener = null;
         }
 
+        mSkBindToDeviceEventListener = mDeps.getSkBindToDeviceEventListener(mContext,
+                mHandler.getLooper());
+
         mTelephonyManager = (TelephonyManager) mContext.getSystemService(Context.TELEPHONY_SERVICE);
         mAppOpsManager = (AppOpsManager) mContext.getSystemService(Context.APP_OPS_SERVICE);
         mLocationPermissionChecker = mDeps.makeLocationPermissionChecker(mContext);
@@ -2419,6 +2432,7 @@ public class ConnectivityService extends IConnectivityManager.Stub
         mUserManager = (UserManager) context.getSystemService(Context.USER_SERVICE);
 
         mUserAllContext = mContext.createContextAsUser(UserHandle.ALL, 0 /* flags */);
+        mPermissionMonitor.registerGosPackageStateChangeCallback();
         // TODO: Move all intent receivers to the helper class.
         mBroadcastReceiveHelper.registerReceivers();
 
@@ -4705,6 +4719,8 @@ public class ConnectivityService extends IConnectivityManager.Stub
         if (mLocalNetEventListener != null) {
             mLocalNetEventListener.start();
         }
+
+        mSkBindToDeviceEventListener.start();
 
         // Clear all clsact stubs on all interfaces.
         mHandler.post(() -> maybeClearTcQdiscClsact());
@@ -8546,6 +8562,21 @@ public class ConnectivityService extends IConnectivityManager.Stub
             mAppOptInDefaultNetworkController.onUserRemoved(user);
         }
         mSettingsObserver.onUsersChanged();
+    }
+
+    @Override
+    public void onUserStarted(@NonNull final UserHandle user) {
+        mPermissionMonitor.onUserStarted(user);
+    }
+
+    @Override
+    public void onUserStopped(@NonNull final UserHandle user) {
+        mPermissionMonitor.onUserStopped(user);
+    }
+
+    @Override
+    public void onUidRemoved(int uid) {
+        mPermissionMonitor.onUidRemoved(uid);
     }
 
     @Override

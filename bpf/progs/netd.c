@@ -147,6 +147,11 @@ DEFINE_BPF_MAP_NO_NETD_API(local_net_note_op_enabled_map, ARRAY, uint32_t, bool,
 // used.
 DEFINE_BPF_MAP_NO_NETD_API(local_net_cache_generation_id_map, ARRAY, uint32_t, uint64_t, 1, 25Q2)
 
+// A ring buffer on which blocked SO_BINDTODEVICE events are pushed.
+DEFINE_BPF_RINGBUF_EXT(sk_bind_to_device_event_ringbuf, SkBindToDeviceEvent, 8 * 512,
+                       AID_ROOT, AID_SYSTEM, 0060, "net_shared", DEFAULT_BPF_PIN_SUBDIR,
+                       26Q2, MAXAPI);
+
 // A ring buffer on which loopback access events are pushed.
 DEFINE_BPF_RINGBUF_EXT(loopback_access_ringbuf, LoopbackAccessEvent, 16 * 512,
                        AID_ROOT, AID_SYSTEM, 0060, "net_shared", DEFAULT_BPF_PIN_SUBDIR,
@@ -1506,57 +1511,54 @@ function int inet_setsockopt(struct bpf_sockopt *ctx,
     UidOwnerValue* uidEntry = bpf_uid_owner_map_lookup_elem(&uid);
     uint32_t uidRule = uidEntry ? uidEntry->rule : 0;
 
+    if (ctx->level == SOL_SOCKET
+            && ctx->optname == SO_BINDTODEVICE
+            && !is_system_uid(uid)
+            && !(uidRule & APP_STRICT_LEAK_BLOCKING_DISABLED_MATCH)) {
+        SkBindToDeviceEvent *event = bpf_sk_bind_to_device_event_ringbuf_reserve();
+        if (event != NULL) {
+            event->uid = uid;
+            // Refer to is_netd() for explanation of shift.
+            event->pid = bpf_get_current_pid_tgid() >> 32;
+            bpf_sk_bind_to_device_event_ringbuf_submit(event);
+        }
+        return SETSOCKOPT_EPERM;
+    }
+
     if (!(uidRule & LOCKDOWN_VPN_MATCH)) {
         return SETSOCKOPT_ALLOWED;
     }
 
-    {
-        // Prevent SO_BINDTODEVICE from being triggered by a UID that is under a lockdown VPN as
-        // this can leak unicast traffic. Can only do this for regular apps as some core system and
-        // system apps rely on this being allowed.
-        // TODO: Review IP_UNICAST_IF and IP_PKTINFO.
-        // TODO: Review PermissionMonitor#hasRestrictedNetworkPermission to see if this covers all
-        //  of the system uids that need to SO_BINDTODEVICE. These uids do not have
-        //  LOCKDOWN_VPN_MATCH.
-        if ((uidRule & LOCKDOWN_VPN_REGULAR_APP_MATCH)
-                && ctx->level == SOL_SOCKET
-                && ctx->optname == SO_BINDTODEVICE) {
-            return SETSOCKOPT_EPERM;
-        }
+    // Prevent kernel-generated multicast traffic (IGMP, MLD) from being triggered by a
+    // UID that is under a lockdown VPN. A known leak that still exists is when a UID joins a multicast
+    // group prior to being under a lockdown VPN and then becomes under a lockdown VPN. In this case the
+    // IGMP/MLD will be generated when the kernel destroys the thread. This is considered very low
+    // severity.
+    if (ctx->level == IPPROTO_IP
+            && (ctx->optname == IP_ADD_MEMBERSHIP
+            || ctx->optname == IP_ADD_SOURCE_MEMBERSHIP
+            || ctx->optname == IP_DROP_MEMBERSHIP
+            || ctx->optname == IP_DROP_SOURCE_MEMBERSHIP
+            || ctx->optname == IP_BLOCK_SOURCE
+            || ctx->optname == IP_UNBLOCK_SOURCE
+            || ctx->optname == IP_MSFILTER)) {
+        return SETSOCKOPT_EPERM;
     }
 
-    {
-        // Prevent kernel-generated multicast traffic (IGMP, MLD) from being triggered by a
-        // UID that is under a lockdown VPN. A known leak that still exists is when a UID joins a multicast
-        // group prior to being under a lockdown VPN and then becomes under a lockdown VPN. In this case the
-        // IGMP/MLD will be generated when the kernel destroys the thread. This is considered very low
-        // severity.
-        if (ctx->level == IPPROTO_IP
-                && (ctx->optname == IP_ADD_MEMBERSHIP
-                || ctx->optname == IP_ADD_SOURCE_MEMBERSHIP
-                || ctx->optname == IP_DROP_MEMBERSHIP
-                || ctx->optname == IP_DROP_SOURCE_MEMBERSHIP
-                || ctx->optname == IP_BLOCK_SOURCE
-                || ctx->optname == IP_UNBLOCK_SOURCE
-                || ctx->optname == IP_MSFILTER)) {
-            return SETSOCKOPT_EPERM;
-        }
+    if (ctx->level == IPPROTO_IPV6
+            && (ctx->optname == IPV6_ADD_MEMBERSHIP /** IPV6_JOIN_GROUP **/
+            || ctx->optname == IPV6_DROP_MEMBERSHIP /** IPV6_LEAVE_GROUP **/)) {
+        return SETSOCKOPT_EPERM;
+    }
 
-        if (ctx->level == IPPROTO_IPV6
-                && (ctx->optname == IPV6_ADD_MEMBERSHIP /** IPV6_JOIN_GROUP **/
-                || ctx->optname == IPV6_DROP_MEMBERSHIP /** IPV6_LEAVE_GROUP **/)) {
-            return SETSOCKOPT_EPERM;
-        }
-
-        if ((ctx->level == IPPROTO_IP || ctx->level == IPPROTO_IPV6)
-                && (ctx->optname == MCAST_JOIN_GROUP
-                || ctx->optname == MCAST_LEAVE_GROUP
-                || ctx->optname == MCAST_BLOCK_SOURCE
-                || ctx->optname == MCAST_UNBLOCK_SOURCE
-                || ctx->optname == MCAST_JOIN_SOURCE_GROUP
-                || ctx->optname == MCAST_LEAVE_SOURCE_GROUP)) {
-            return SETSOCKOPT_EPERM;
-        }
+    if ((ctx->level == IPPROTO_IP || ctx->level == IPPROTO_IPV6)
+            && (ctx->optname == MCAST_JOIN_GROUP
+            || ctx->optname == MCAST_LEAVE_GROUP
+            || ctx->optname == MCAST_BLOCK_SOURCE
+            || ctx->optname == MCAST_UNBLOCK_SOURCE
+            || ctx->optname == MCAST_JOIN_SOURCE_GROUP
+            || ctx->optname == MCAST_LEAVE_SOURCE_GROUP)) {
+        return SETSOCKOPT_EPERM;
     }
 
     return SETSOCKOPT_ALLOWED;

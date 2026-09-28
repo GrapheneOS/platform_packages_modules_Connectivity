@@ -63,6 +63,9 @@ private inline fun <reified T> any() = org.mockito.Mockito.any(T::class.java)
 
 @DevSdkIgnoreRunner.MonitorThreadLeak
 @RunWith(DevSdkIgnoreRunner::class)
+/**
+ * atest -c ConnectivityCoverageTests:android.net.connectivity.com.android.server.connectivity.BroadcastReceiveHelperTest
+ */
 class BroadcastReceiveHelperTest {
     private val mockContext = mock(Context::class.java)
     private val testDelegate = TestDelegate()
@@ -326,6 +329,9 @@ class BroadcastReceiveHelperTest {
             data class OnExternalApplicationsAvailable(val pkgList: Array<String>) : CallbackEvent()
             data class OnUserAdded(val userHandle: UserHandle) : CallbackEvent()
             data class OnUserRemoved(val userHandle: UserHandle) : CallbackEvent()
+            data class OnUserStarted(val userHandle: UserHandle) : CallbackEvent()
+            data class OnUserStopped(val userHandle: UserHandle) : CallbackEvent()
+            data class OnUidRemoved(val uid: Int) : CallbackEvent()
         }
 
         override fun onPackageAdded(packageName: String, uid: Int) {
@@ -350,6 +356,18 @@ class BroadcastReceiveHelperTest {
 
         override fun onUserRemoved(userHandle: UserHandle) {
             history.add(CallbackEvent.OnUserRemoved(userHandle))
+        }
+
+        override fun onUserStarted(userHandle: UserHandle) {
+            history.add(CallbackEvent.OnUserStarted(userHandle))
+        }
+
+        override fun onUserStopped(userHandle: UserHandle) {
+            history.add(CallbackEvent.OnUserStopped(userHandle))
+        }
+
+        override fun onUidRemoved(uid: Int) {
+            history.add(CallbackEvent.OnUidRemoved(uid))
         }
     }
 }

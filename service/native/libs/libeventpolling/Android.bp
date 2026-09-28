@@ -46,6 +46,7 @@ cc_library_static {
     srcs: [
         "LocalNetEventHandler.cpp",
         "LoopbackEventHandler.cpp",
+        "SkBindToDeviceEventHandler.cpp",
     ],
     defaults: ["libstatslog_defaults"],
     export_include_dirs: ["include"],

@@ -104,6 +104,7 @@ android_library {
         "service-connectivity-tiramisu-pre-jarjar",
         "testables",
         "cts-net-utils",
+        "services.core",
     ],
     libs: [
         "android.net.ipsec.ike.stubs.module_lib",

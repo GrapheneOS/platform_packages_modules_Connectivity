@@ -24,6 +24,7 @@ namespace android {
 int register_com_android_server_connectivity_BpfEventPoller(JNIEnv *env);
 int register_com_android_server_connectivity_ClatCoordinator(JNIEnv *env);
 int register_com_android_server_connectivity_LocalNetEventListener(JNIEnv *env);
+int register_com_android_server_connectivity_SkBindToDeviceEventListener(JNIEnv *env);
 int register_android_server_net_NetworkStatsFactory(JNIEnv *env);
 int register_android_server_net_NetworkStatsService(JNIEnv *env);
 int register_com_android_net_module_util_ServiceConnectivityJni(JNIEnv *env,
@@ -46,6 +47,10 @@ extern "C" jint JNI_OnLoad(JavaVM* vm, void*) {
         }
 
         if (register_com_android_server_connectivity_LocalNetEventListener(env) < 0) {
+            return JNI_ERR;
+        }
+
+        if (register_com_android_server_connectivity_SkBindToDeviceEventListener(env) < 0) {
             return JNI_ERR;
         }
 

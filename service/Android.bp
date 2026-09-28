@@ -137,6 +137,7 @@ cc_library_shared {
         "jni/com_android_server_connectivity_BpfEventPoller.cpp",
         "jni/com_android_server_connectivity_ClatCoordinator.cpp",
         "jni/com_android_server_connectivity_LocalNetEventListener.cpp",
+        "jni/com_android_server_connectivity_SkBindToDeviceEventListener.cpp",
         "jni/onload.cpp",
     ],
     header_libs: [
