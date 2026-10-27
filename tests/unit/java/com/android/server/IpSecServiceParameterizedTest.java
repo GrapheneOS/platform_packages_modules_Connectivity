@@ -147,6 +147,7 @@ public class IpSecServiceParameterizedTest {
 
     private class TestContext extends MockContext {
         private Set<String> mAllowedPermissions = new ArraySet<>(Arrays.asList(
+                android.Manifest.permission.INTERNET,
                 android.Manifest.permission.MANAGE_IPSEC_TUNNELS,
                 android.Manifest.permission.NETWORK_STACK,
                 android.Manifest.permission.ACCESS_NETWORK_STATE,

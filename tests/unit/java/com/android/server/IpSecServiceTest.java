@@ -16,7 +16,11 @@
 
 package com.android.server;
 
+import static android.Manifest.permission.INTERNET;
+import static android.content.pm.PackageManager.PERMISSION_DENIED;
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 import static android.system.OsConstants.AF_INET;
+import static android.system.OsConstants.EACCES;
 import static android.system.OsConstants.EADDRINUSE;
 import static android.system.OsConstants.IPPROTO_UDP;
 import static android.system.OsConstants.SOCK_DGRAM;
@@ -24,6 +28,7 @@ import static android.system.OsConstants.SOCK_DGRAM;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -47,6 +52,7 @@ import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.ServiceSpecificException;
 import android.system.ErrnoException;
 import android.system.Os;
 import android.system.StructStat;
@@ -129,6 +135,7 @@ public class IpSecServiceTest {
     @Before
     public void setUp() throws Exception {
         mMockContext = mock(Context.class);
+        when(mMockContext.checkCallingOrSelfPermission(INTERNET)).thenReturn(PERMISSION_GRANTED);
         mMockNetd = mock(INetd.class);
         mDeps = makeDependencies();
         mIpSecService = new IpSecService(mMockContext, mDeps);
@@ -157,6 +164,14 @@ public class IpSecServiceTest {
         int port = s.getLocalPort();
         s.close();
         return port;
+    }
+
+    @Test
+    public void testOpenUdpEncapsulationSocketWithoutInternetPermission() throws Exception {
+        when(mMockContext.checkCallingOrSelfPermission(INTERNET)).thenReturn(PERMISSION_DENIED);
+        ServiceSpecificException denied = assertThrows(ServiceSpecificException.class,
+                () -> mIpSecService.openUdpEncapsulationSocket(0, new Binder()));
+        assertEquals(EACCES, denied.errorCode);
     }
 
     @Test

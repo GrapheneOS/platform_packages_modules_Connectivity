@@ -17,6 +17,7 @@
 package com.android.server;
 
 import static android.Manifest.permission.DUMP;
+import static android.Manifest.permission.INTERNET;
 import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.net.IpSecManager.FEATURE_IPSEC_TUNNEL_MIGRATION;
 import static android.net.IpSecManager.INVALID_RESOURCE_ID;
@@ -1281,6 +1282,11 @@ public class IpSecService extends IIpSecService.Stub {
     @Override
     public synchronized IpSecUdpEncapResponse openUdpEncapsulationSocket(int port, IBinder binder)
             throws RemoteException {
+        if (mContext.checkCallingOrSelfPermission(INTERNET) != PackageManager.PERMISSION_GRANTED) {
+            // IpSecManager converts this to IOException.
+            throw new ServiceSpecificException(OsConstants.EACCES, "INTERNET permission denied");
+        }
+
         // Experimental support for IPv6 UDP encap.
         final int family;
         final InetAddress localAddr;
