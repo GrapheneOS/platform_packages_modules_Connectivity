@@ -17,12 +17,14 @@
 package android.net;
 
 import static android.system.OsConstants.AF_INET;
+import static android.system.OsConstants.EACCES;
 import static android.system.OsConstants.IPPROTO_UDP;
 import static android.system.OsConstants.SOCK_DGRAM;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -36,6 +38,8 @@ import static org.mockito.Mockito.when;
 
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
+import android.os.ServiceSpecificException;
+import android.system.ErrnoException;
 import android.system.Os;
 import android.test.mock.MockContext;
 
@@ -49,6 +53,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -268,6 +273,20 @@ public class IpSecManagerTest {
         encapSocket.close();
 
         verify(mMockIpSecService).closeUdpEncapsulationSocket(DUMMY_RESOURCE_ID);
+    }
+
+    @Test
+    public void testOpenEncapsulationSocketPermissionDeniedThrowsIOException() throws Exception {
+        when(mMockIpSecService.openUdpEncapsulationSocket(anyInt(), any()))
+                .thenThrow(new ServiceSpecificException(EACCES, "INTERNET permission denied"));
+
+        IOException randomPortError = assertThrows(IOException.class,
+                () -> mIpSecManager.openUdpEncapsulationSocket());
+        assertEquals(EACCES, ((ErrnoException) randomPortError.getCause()).errno);
+
+        IOException explicitPortError = assertThrows(IOException.class,
+                () -> mIpSecManager.openUdpEncapsulationSocket(TEST_UDP_ENCAP_PORT));
+        assertEquals(EACCES, ((ErrnoException) explicitPortError.getCause()).errno);
     }
 
     @Test
