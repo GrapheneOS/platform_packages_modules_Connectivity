@@ -172,6 +172,7 @@ java_library {
     name: "service-connectivity-pre-jarjar",
     sdk_version: "system_server_current",
     min_sdk_version: "31",
+    platform_apis: true,
     srcs: [
         "src/**/*.java",
         ":framework-connectivity-shared-srcs",
